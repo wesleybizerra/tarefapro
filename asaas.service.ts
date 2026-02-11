@@ -3,10 +3,17 @@ import { decrypt } from './crypto.utils.ts';
 
 // Mocking axios behavior as it's not pre-installed in this environment
 const api = {
+<<<<<<< HEAD
     post: async (url: string, data: any) => {
         console.log(`API POST to ${url}`, data);
         return { data: { success: true, id: 'asaas_transfer_id_123' } };
     }
+=======
+  post: async (url: string, data: any) => {
+    console.log(`API POST to ${url}`, data);
+    return { data: { success: true, id: 'asaas_transfer_id_123' } };
+  }
+>>>>>>> 78732ff (fix: ajuste de build e deploy para Railway)
 };
 
 export class AsaasService {
