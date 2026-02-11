@@ -4,7 +4,7 @@ import {
   Wallet, CheckCircle, Clock, ArrowUpRight, Award,
   ShieldCheck, TrendingUp, LayoutDashboard, LogOut, User as UserIcon,
   Lock, Smartphone, Mail, Shield, Scale, ChevronRight, Info, Eye, EyeOff,
-  Users, DollarSign, Activity, AlertCircle, Trash2, Wifi, RefreshCw, Zap
+  Users, DollarSign, Activity, AlertCircle, Trash2, RefreshCw, Zap
 } from 'lucide-react';
 import { Buffer } from 'buffer';
 
@@ -74,11 +74,9 @@ const App: React.FC = () => {
 
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
 
-  // --- Sincronização Cloud ---
   const fetchCloudData = useCallback(async () => {
     setIsSyncing(true);
-    // Simula chamada para Netlify Function /api/get-stats
-    await new Promise(r => setTimeout(r, 1200));
+    await new Promise(r => setTimeout(r, 800)); // Simula latência de rede
     const savedStats = localStorage.getItem(STORAGE_KEYS.STATS);
     if (savedStats) setPlatformStats(JSON.parse(savedStats));
     setIsSyncing(false);
@@ -97,18 +95,9 @@ const App: React.FC = () => {
     fetchCloudData();
   }, [fetchCloudData]);
 
-  // Polling Real-time
-  useEffect(() => {
-    if (viewMode === 'ADMIN') {
-      const interval = setInterval(fetchCloudData, 30000); 
-      return () => clearInterval(interval);
-    }
-  }, [viewMode, fetchCloudData]);
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
     setTimeout(() => {
       setLoading(false);
       const isWesley = formData.email.toLowerCase() === ADMIN_EMAIL && formData.password === ADMIN_PASS;
@@ -119,37 +108,54 @@ const App: React.FC = () => {
         name: isWesley ? "Wesley Bizerra" : (formData.name || "Consultor"),
         pixKey: isWesley ? ADMIN_PIX : (userData.pixKey || "")
       };
-
       setUserData(newUserData);
       setViewMode(newMode);
       localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify({ viewMode: newMode, userData: newUserData }));
       setActiveTab(isWesley ? 'admin_overview' : 'dashboard');
-    }, 1500);
+    }, 1200);
   };
 
   const handleWithdraw = async () => {
     const amount = viewMode === 'ADMIN' ? platformStats.adminCommission : userData.balance;
-    if (amount <= 0) return alert("Saldo insuficiente.");
+    const pixToUse = viewMode === 'ADMIN' ? ADMIN_PIX : userData.pixKey;
+
+    if (amount <= 0) return alert("Você não possui saldo para sacar.");
+    if (!pixToUse) return alert("Cadastre uma chave PIX antes de sacar.");
 
     setWithdrawStatus('PROCESSING');
     
     try {
-      // Aqui chamamos a Netlify Function real
-      // const response = await fetch('/.netlify/functions/payout', { method: 'POST', body: JSON.stringify({ amount, pixKey: userData.pixKey }) });
-      await new Promise(r => setTimeout(r, 3500)); // Simulando processamento bancário Asaas
+      // CHAMADA REAL PARA O BACKEND DO NETLIFY
+      const response = await fetch('/.netlify/functions/payout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amount,
+          pixKey: pixToUse,
+          pixKeyType: 'EVP', // Chave Aleatória por padrão
+          description: `Saque TarefaPro - ${userData.name}`
+        })
+      });
 
-      setWithdrawStatus('SUCCESS');
-      if (viewMode === 'ADMIN') {
-        const newStats = { ...platformStats, adminCommission: 0 };
-        setPlatformStats(newStats);
-        localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
+      const data = await response.json();
+
+      if (response.ok) {
+        setWithdrawStatus('SUCCESS');
+        if (viewMode === 'ADMIN') {
+          const newStats = { ...platformStats, adminCommission: 0 };
+          setPlatformStats(newStats);
+          localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
+        } else {
+          setUserData(p => ({ ...p, balance: 0, totalPaid: p.totalPaid + p.balance }));
+        }
       } else {
-        setUserData(p => ({ ...p, balance: 0, totalPaid: p.totalPaid + p.balance }));
+        throw new Error(data.error || 'Erro ao processar PIX');
       }
-      setTimeout(() => setWithdrawStatus('IDLE'), 3000);
-    } catch (e) {
-      alert("Erro ao processar saque. Verifique sua chave API da Asaas.");
+    } catch (e: any) {
+      alert(`Erro: ${e.message}`);
       setWithdrawStatus('IDLE');
+    } finally {
+      setTimeout(() => setWithdrawStatus('IDLE'), 4000);
     }
   };
 
@@ -167,43 +173,39 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
   };
 
-  if (viewMode === 'LOADING') {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center">
-        <RefreshCw className="text-indigo-500 animate-spin mb-4" size={48} />
-        <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-[10px]">Iniciando Protocolos Cloud...</p>
-      </div>
-    );
-  }
+  if (viewMode === 'LOADING') return (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center">
+      <RefreshCw className="text-indigo-500 animate-spin mb-4" size={48} />
+      <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-[10px]">Autenticando na Nuvem...</p>
+    </div>
+  );
 
-  if (viewMode === 'AUTH') {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
-        <div className="w-full max-w-md bg-white rounded-[3.5rem] p-12 shadow-3xl border border-slate-100">
-          <div className="text-center mb-10">
-            <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center text-white mx-auto mb-6 shadow-2xl">
-              <Zap size={40} fill="currentColor" />
-            </div>
-            <h1 className="text-3xl font-black text-slate-900">TarefaPro</h1>
-            <Badge variant="premium">Acesso Seguro</Badge>
+  if (viewMode === 'AUTH') return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
+      <div className="w-full max-w-md bg-white rounded-[3.5rem] p-12 shadow-3xl border border-slate-100">
+        <div className="text-center mb-10">
+          <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center text-white mx-auto mb-6 shadow-2xl">
+            <Zap size={40} fill="currentColor" />
           </div>
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-4">E-mail</label>
-              <input type="email" onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:bg-white transition-all font-bold" required />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-4">Senha</label>
-              <input type="password" onChange={e => setFormData({...formData, password: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:bg-white transition-all font-bold" required />
-            </div>
-            <button type="submit" disabled={loading} className="w-full py-6 bg-indigo-600 text-white rounded-3xl font-black shadow-2xl hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-widest">
-              {loading ? 'Sincronizando...' : 'Entrar no Sistema'}
-            </button>
-          </form>
+          <h1 className="text-3xl font-black text-slate-900">TarefaPro</h1>
+          <Badge variant="premium">Plataforma Oficial</Badge>
         </div>
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-4">E-mail</label>
+            <input type="email" placeholder="wesleybizerra@hotmail.com" onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:bg-white transition-all font-bold" required />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-4">Senha</label>
+            <input type="password" placeholder="••••••••" onChange={e => setFormData({...formData, password: e.target.value})} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none focus:bg-white transition-all font-bold" required />
+          </div>
+          <button type="submit" disabled={loading} className="w-full py-6 bg-indigo-600 text-white rounded-3xl font-black shadow-2xl hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-widest">
+            {loading ? 'Sincronizando...' : 'Acessar Painel'}
+          </button>
+        </form>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row font-sans">
@@ -214,36 +216,36 @@ const App: React.FC = () => {
         </div>
         <nav className="space-y-4">
           {viewMode === 'ADMIN' ? (
-            <button onClick={() => setActiveTab('admin_overview')} className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'admin_overview' ? 'bg-slate-900 text-white shadow-2xl' : 'text-slate-400'}`}><LayoutDashboard /> Painel Wesley</button>
+            <button onClick={() => setActiveTab('admin_overview')} className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'admin_overview' ? 'bg-slate-900 text-white shadow-2xl' : 'text-slate-400'}`}><LayoutDashboard /> Gestão Master</button>
           ) : (
-            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-400'}`}><LayoutDashboard /> Dashboard</button>
+            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-400'}`}><LayoutDashboard /> Início</button>
           )}
           <button onClick={() => setActiveTab('wallet')} className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'wallet' ? (viewMode === 'ADMIN' ? 'bg-slate-900 text-white' : 'bg-indigo-600 text-white') : 'text-slate-400'}`}><Wallet /> Carteira PIX</button>
         </nav>
         <button onClick={() => { localStorage.removeItem(STORAGE_KEYS.SESSION); window.location.reload(); }} className="mt-auto flex items-center gap-5 px-7 py-5 text-slate-400 font-black text-xs uppercase hover:text-red-500 transition-colors">
-          <LogOut /> Encerrar Sessão
+          <LogOut /> Sair
         </button>
       </aside>
 
       <main className="flex-1 p-6 lg:p-16 overflow-y-auto pb-32">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-16">
           <div>
-            <h1 className="text-4xl font-black tracking-tighter text-slate-900">{viewMode === 'ADMIN' ? 'Gestão Master' : 'Painel Consultor'}</h1>
+            <h1 className="text-4xl font-black tracking-tighter text-slate-900 leading-none">{viewMode === 'ADMIN' ? 'Painel do Wesley' : 'Área do Consultor'}</h1>
             <div className="flex items-center gap-3 mt-4">
               <div className="flex items-center gap-2 bg-white border border-slate-100 px-3 py-1.5 rounded-full shadow-sm">
                 <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-indigo-500 animate-ping' : 'bg-emerald-500'}`}></div>
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{isSyncing ? 'Syncing...' : 'Netlify Cloud OK'}</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{isSyncing ? 'Conectando...' : 'Servidor Ativo'}</span>
               </div>
-              <Badge variant={viewMode === 'ADMIN' ? 'premium' : 'success'}>{viewMode === 'ADMIN' ? 'MODO WESLEY' : 'Verificado'}</Badge>
+              <Badge variant={viewMode === 'ADMIN' ? 'premium' : 'success'}>{viewMode === 'ADMIN' ? 'ADMINISTRADOR' : 'VERIFICADO'}</Badge>
             </div>
           </div>
           <div className="flex items-center gap-5 bg-white p-4 pr-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
-             <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 font-black text-xl">
+             <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 font-black text-xl shadow-inner">
                {userData.name.charAt(0)}
              </div>
              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Disponível</p>
-                <p className="text-3xl font-black text-indigo-600 leading-none tracking-tighter">
+                <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Saldo em Conta</p>
+                <p className="text-3xl font-black text-indigo-600 tracking-tighter">
                   R$ {(viewMode === 'ADMIN' ? platformStats.adminCommission : userData.balance).toFixed(2)}
                 </p>
              </div>
@@ -253,17 +255,17 @@ const App: React.FC = () => {
         {viewMode === 'ADMIN' && activeTab === 'admin_overview' && (
           <div className="space-y-8 animate-fade-in">
              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-               <StatCard title="Minha Comissão" value={`R$ ${platformStats.adminCommission.toFixed(2)}`} icon={<DollarSign />} trend="Líquido" variant="dark" />
-               <StatCard title="Total Usuários" value={platformStats.activeUsers.toString()} icon={<Users />} />
-               <StatCard title="Volume Transacionado" value={`R$ ${platformStats.totalRevenue.toFixed(2)}`} icon={<Activity />} />
-               <StatCard title="Pendentes" value="0" icon={<Clock />} />
+               <StatCard title="Minha Lucro (10%)" value={`R$ ${platformStats.adminCommission.toFixed(2)}`} icon={<DollarSign />} variant="dark" trend="Real-time" />
+               <StatCard title="Total Consultores" value={platformStats.activeUsers.toString()} icon={<Users />} />
+               <StatCard title="Volume de Tarefas" value={`R$ ${platformStats.totalRevenue.toFixed(2)}`} icon={<Activity />} />
+               <StatCard title="Saques Hoje" value="0" icon={<Clock />} />
              </div>
              <div className="bg-slate-900 rounded-[3rem] p-12 text-white relative overflow-hidden border border-slate-800">
                <div className="relative z-10 max-w-lg">
-                 <h2 className="text-4xl font-black tracking-tighter">Bem-vindo, Wesley.</h2>
-                 <p className="text-slate-400 text-lg mt-4 font-medium">A plataforma está processando tarefas. Sua comissão de 10% é injetada automaticamente aqui.</p>
-                 <div className="mt-8 flex items-center gap-3 text-[11px] font-black uppercase text-indigo-400 bg-white/5 p-4 rounded-2xl w-fit">
-                    <ShieldCheck size={18} /> Chave PIX Destino: {ADMIN_PIX}
+                 <h2 className="text-4xl font-black tracking-tighter">Gestão de Lucros.</h2>
+                 <p className="text-slate-400 text-lg mt-4 font-medium">Todas as tarefas geram 10% de comissão imediata para você. O saque é enviado para sua chave cadastrada.</p>
+                 <div className="mt-8 flex items-center gap-3 text-[11px] font-black uppercase text-indigo-400 bg-white/5 p-4 rounded-2xl w-fit border border-white/5">
+                    <ShieldCheck size={18} /> Sua Chave PIX: {ADMIN_PIX}
                  </div>
                </div>
                <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-[100px]"></div>
@@ -274,15 +276,15 @@ const App: React.FC = () => {
         {viewMode === 'USER' && activeTab === 'dashboard' && (
           <div className="space-y-8 animate-fade-in">
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-               <StatCard title="Meu Saldo" value={`R$ ${userData.balance.toFixed(2)}`} icon={<Wallet />} />
-               <StatCard title="Auditoria" value="R$ 0,00" icon={<RefreshCw />} />
-               <StatCard title="Total Sacado" value={`R$ ${userData.totalPaid.toFixed(2)}`} icon={<CheckCircle />} />
+               <StatCard title="Disponível" value={`R$ ${userData.balance.toFixed(2)}`} icon={<Wallet />} />
+               <StatCard title="Em Auditoria" value="R$ 0,00" icon={<RefreshCw />} />
+               <StatCard title="Total Pago" value={`R$ ${userData.totalPaid.toFixed(2)}`} icon={<CheckCircle />} />
              </div>
              <div className="bg-indigo-600 rounded-[3.5rem] p-16 text-white text-center shadow-3xl relative overflow-hidden">
-                <h2 className="text-5xl font-black tracking-tighter mb-4">Ganhe agora.</h2>
-                <p className="text-indigo-100 text-xl mb-10 max-w-md mx-auto">Temos tarefas disponíveis para o seu perfil. Clique abaixo para simular.</p>
+                <h2 className="text-5xl font-black tracking-tighter mb-4">Gerar Renda.</h2>
+                <p className="text-indigo-100 text-xl mb-10 max-w-md mx-auto">Sua conta está habilitada. Execute a tarefa teste para ver seu saldo subir.</p>
                 <button onClick={simulateTask} className="bg-white text-indigo-600 px-20 py-8 rounded-[2.5rem] font-black text-lg shadow-2xl hover:scale-105 active:scale-95 transition-all">
-                   EXECUTAR TAREFA (R$ 25,00)
+                   TESTAR TAREFA (R$ 25,00)
                 </button>
              </div>
           </div>
@@ -291,25 +293,25 @@ const App: React.FC = () => {
         {activeTab === 'wallet' && (
           <div className="max-w-2xl mx-auto py-10 animate-fade-in">
              <div className="bg-white p-12 rounded-[3.5rem] shadow-3xl border border-slate-100">
-                <h2 className="text-3xl font-black tracking-tighter mb-10">Carteira PIX</h2>
+                <h2 className="text-3xl font-black tracking-tighter mb-10">Solicitar PIX</h2>
                 <div className="bg-slate-900 rounded-[3rem] p-10 text-white mb-10 shadow-2xl">
-                   <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em] mb-4">Disponível para saque</p>
+                   <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4">Valor para resgate</p>
                    <p className="text-6xl font-black tracking-tighter mb-10">R$ {(viewMode === 'ADMIN' ? platformStats.adminCommission : userData.balance).toFixed(2)}</p>
                    <div className="border-t border-white/10 pt-8 flex justify-between items-center">
                       <div>
-                        <p className="text-[10px] font-black text-slate-500 uppercase mb-1">Destino PIX</p>
-                        <p className="text-indigo-400 font-mono text-sm">{userData.pixKey || 'Vincular Chave'}</p>
+                        <p className="text-[10px] font-black text-slate-500 uppercase mb-1">Conta de Destino</p>
+                        <p className="text-indigo-400 font-mono text-sm">{viewMode === 'ADMIN' ? ADMIN_PIX : (userData.pixKey || 'Vincular PIX no Perfil')}</p>
                       </div>
-                      <Badge variant="success">Asaas Cloud</Badge>
+                      <Badge variant="success">PIX Ativo</Badge>
                    </div>
                 </div>
                 <button onClick={handleWithdraw} disabled={withdrawStatus !== 'IDLE' || (viewMode === 'ADMIN' ? platformStats.adminCommission <= 0 : userData.balance <= 0)} className="w-full py-8 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-3xl hover:bg-indigo-700 active:scale-95 disabled:opacity-30 transition-all flex items-center justify-center gap-3">
                    {withdrawStatus === 'PROCESSING' ? <RefreshCw className="animate-spin" /> : <Zap fill="currentColor" size={24} />}
-                   {withdrawStatus === 'PROCESSING' ? 'PROCESSANDO NO BANCO...' : 'RECEBER PIX AGORA'}
+                   {withdrawStatus === 'PROCESSING' ? 'PROCESSANDO SAQUE...' : 'CONFIRMAR SAQUE PIX'}
                 </button>
                 {withdrawStatus === 'SUCCESS' && (
                    <div className="mt-8 p-6 bg-emerald-50 text-emerald-700 rounded-3xl text-center font-black animate-bounce border border-emerald-100">
-                      SAQUE ENVIADO COM SUCESSO!
+                      DINHEIRO ENVIADO COM SUCESSO!
                    </div>
                 )}
              </div>
