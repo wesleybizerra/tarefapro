@@ -1,18 +1,16 @@
 import axios from 'axios';
 
 /**
- * Função Serverless para Processamento de Saques (PIX)
- * Esta função roda no servidor do Netlify, protegendo sua Chave API.
+ * Função Serverless do Netlify para processar saques via PIX na Asaas.
+ * Localização: /netlify/functions/payout.ts
  */
 export const handler = async (event: any) => {
-    // 1. Pega a chave da Asaas das variáveis de ambiente do Netlify
+    // 1. Configurações Iniciais
+    // A ASAAS_API_KEY deve ser configurada no painel do Netlify (Environment Variables)
     const ASAAS_KEY = process.env.ASAAS_API_KEY;
-
-    // URL da Asaas (Sandbox para testes ou Produção)
-    // Se você estiver em produção, use: https://api.asaas.com/v3/transfers
     const ASAAS_URL = 'https://api.asaas.com/v3/transfers';
 
-    // 2. Segurança: Só permite requisições do tipo POST
+    // 2. Filtro de Segurança: Apenas aceita requisições POST
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
@@ -21,57 +19,60 @@ export const handler = async (event: any) => {
     }
 
     try {
-        // 3. Lê os dados enviados pelo seu site (index.tsx)
+        // 3. Extração dos dados enviados pelo formulário (index.tsx)
         const body = JSON.parse(event.body);
         const { amount, pixKey, pixKeyType, description } = body;
 
-        // 4. Validação rápida dos dados
-        if (!amount || !pixKey) {
+        // 4. Validação Básica de Segurança
+        if (!amount || amount <= 0 || !pixKey) {
             return {
                 statusCode: 400,
-                body: JSON.stringify({ error: 'Valor e Chave PIX são obrigatórios.' })
+                body: JSON.stringify({ error: 'Dados de saque inválidos ou incompletos.' })
             };
         }
 
-        // 5. Chamada oficial para a API da Asaas
+        // 5. Requisição para a API da Asaas
+        // Documentação Asaas: https://docs.asaas.com/reference/transferir-valores-via-pix
         const response = await axios.post(
             ASAAS_URL,
             {
-                value: amount,               // Valor do saque
-                pixAddressKey: pixKey,       // Chave PIX destino
-                pixAddressKeyType: pixKeyType || 'EVP', // Tipo da chave (EVP = Aleatória)
+                value: amount,
+                pixAddressKey: pixKey,
+                pixAddressKeyType: pixKeyType || 'EVP', // EVP = Chave Aleatória
                 description: description || 'Saque Plataforma TarefaPro',
-                operationType: 'PIX'         // Define que a transferência é via PIX
+                operationType: 'PIX'
             },
             {
                 headers: {
-                    'access_token': ASAAS_KEY, // Sua chave secreta (nunca aparece no navegador)
+                    'access_token': ASAAS_KEY,
                     'Content-Type': 'application/json'
                 }
             }
         );
 
-        // 6. Retorna sucesso para o site
+        // 6. Resposta de Sucesso para o Frontend
         return {
             statusCode: 200,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 success: true,
-                message: 'PIX enviado com sucesso!',
+                message: 'Saque autorizado e enviado para processamento PIX!',
                 asaasId: response.data.id
             })
         };
 
     } catch (error: any) {
-        // 7. Tratamento de erros (ex: saldo insuficiente na Asaas ou chave inválida)
-        console.error('Erro no Payout:', error.response?.data || error.message);
+        // 7. Tratamento de Erros Bancários
+        console.error('ERRO ASAAS:', error.response?.data || error.message);
+
+        const errorMessage = error.response?.data?.errors?.[0]?.description || 'Erro interno no processamento bancário.';
 
         return {
             statusCode: 500,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                error: 'Falha no processamento do PIX.',
-                details: error.response?.data?.errors?.[0]?.description || 'Erro desconhecido na Asaas'
+                error: 'Falha ao processar PIX na Asaas.',
+                details: errorMessage
             })
         };
     }
