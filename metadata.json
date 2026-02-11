@@ -1,0 +1,7 @@
+
+{
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "description": "Plataforma TarefaPro - Renda extra legítima via microtarefas com saque PIX automático."
+}
