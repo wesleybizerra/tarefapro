@@ -1,40 +1,54 @@
-
-import crypto from 'crypto';
-// Fix: Added explicit Buffer import to resolve "Cannot find name 'Buffer'" errors
 import { Buffer } from 'buffer';
 
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const KEY = process.env.ENCRYPTION_KEY || 'default_key_32_chars_long_1234567'; // Deve ter 32 chars
+const KEY_STRING = process.env.ENCRYPTION_KEY || 'default_key_32_chars_long_1234567';
 
-export function encrypt(text: string): string {
-    const iv = crypto.randomBytes(IV_LENGTH);
-    // Fix: Using Buffer.from which is now available from explicit import
-    const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(KEY), iv);
-
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-
-    const authTag = cipher.getAuthTag().toString('hex');
-
-    // Retorna IV:Tag:Conteúdo
-    return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+async function getCryptoKey() {
+  const enc = new TextEncoder();
+  const keyData = enc.encode(KEY_STRING.padEnd(32, '0').slice(0, 32));
+  return await window.crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
 }
 
-export function decrypt(hash: string): string {
-    const [ivHex, authTagHex, encryptedText] = hash.split(':');
+export async function encrypt(text: string): Promise<string> {
+  const enc = new TextEncoder();
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const key = await getCryptoKey();
+  
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    enc.encode(text)
+  );
 
-    // Fix: Using Buffer.from which is now available from explicit import
-    const iv = Buffer.from(ivHex, 'hex');
-    // Fix: Using Buffer.from which is now available from explicit import
-    const authTag = Buffer.from(authTagHex, 'hex');
-    // Fix: Using Buffer.from which is now available from explicit import
-    const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(KEY), iv);
+  const ivHex = Buffer.from(iv).toString('hex');
+  const contentHex = Buffer.from(new Uint8Array(encrypted)).toString('hex');
+  
+  return `${ivHex}:${contentHex}`;
+}
 
-    decipher.setAuthTag(authTag);
+export async function decrypt(hash: string): Promise<string> {
+  try {
+    const parts = hash.split(':');
+    if (parts.length < 2) throw new Error('Hash inválido');
+    
+    const iv = Buffer.from(parts[0], 'hex');
+    const encryptedData = Buffer.from(parts[1], 'hex');
+    const key = await getCryptoKey();
 
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      encryptedData
+    );
 
-    return decrypted;
+    return new TextDecoder().decode(decrypted);
+  } catch (e) {
+    console.error('Erro na descriptografia:', e);
+    return 'DADO_PROTEGIDO';
+  }
 }
