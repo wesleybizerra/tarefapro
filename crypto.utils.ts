@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { Buffer } from 'buffer';
 
 const KEY_STRING = process.env.ENCRYPTION_KEY || 'default_key_32_chars_long_1234567';
@@ -78,6 +79,33 @@ export async function encrypt(text: string): Promise<string> {
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
     const key = await getKey();
 
+=======
+
+/**
+ * Utilitários de Criptografia para Navegador (LGPD Compliance)
+ * Utiliza Web Crypto API para AES-GCM 256
+ */
+
+const ENCRYPTION_KEY_STRING = 'default_key_32_chars_long_1234567';
+
+async function getKey() {
+    const enc = new TextEncoder();
+    const keyData = enc.encode(ENCRYPTION_KEY_STRING);
+    return await window.crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+export async function encrypt(text: string): Promise<string> {
+    const enc = new TextEncoder();
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const key = await getKey();
+
+>>>>>>> 46d733016c8728a7432888dc3beb8afab971025e
     const encrypted = await window.crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
         key,
@@ -112,5 +140,8 @@ export async function decrypt(base64Hash: string): Promise<string> {
         console.error('Erro na descriptografia:', e);
         return 'erro_decodificacao';
     }
+<<<<<<< HEAD
 >>>>>>> 78732ff (fix: ajuste de build e deploy para Railway)
+=======
+>>>>>>> 46d733016c8728a7432888dc3beb8afab971025e
 }
