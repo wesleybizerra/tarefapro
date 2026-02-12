@@ -13,7 +13,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Rota de Healthcheck para o Railway
+// Log de requisições para depuração no Railway
+app.use((req, res, next) => {
+    if (req.url !== '/health') {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    }
+    next();
+});
+
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // --- MOCK API ---
@@ -34,19 +41,21 @@ app.get('/api/admin/stats', (req, res) => res.json({ ...globalState.stats, membe
 // --- SERVIR FRONTEND ---
 const distPath = path.resolve(__dirname, 'dist');
 
-// Middleware para arquivos estáticos (CSS, JS, Imagens)
+// Servir arquivos estáticos (CSS, JS do build do Vite)
 app.use(express.static(distPath));
 
-// Fallback para qualquer outra rota (SPA) - Envia o index.html gerado pelo build
+// Fallback para SPA - Serve o index.html gerado pelo BUILD
 app.get('*', (req, res) => {
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send('Build do frontend não encontrado. Verifique se "npm run build" foi executado.');
+        console.error(`ERRO: index.html não encontrado em ${indexPath}`);
+        res.status(404).send('Frontend não encontrado. Verifique os logs de build.');
     }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📂 Pasta dist: ${distPath}`);
 });
