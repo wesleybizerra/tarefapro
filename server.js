@@ -3,7 +3,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import axios from 'axios';
-import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +14,6 @@ app.use(cors());
 app.use(express.json());
 
 // --- BANCO DE DADOS EM MEMÓRIA ---
-// Nota: Em produção no Railway, esses dados resetam se o app reiniciar.
 const globalState = {
     users: [
         { name: "Wesley Bizerra", email: "wesleybizerra@hotmail.com", password: "Cadernorox@27", role: "ADMIN", balance: 0, totalPaid: 0, pixKey: "71981574664" }
@@ -50,7 +48,7 @@ app.post('/api/login', (req, res) => {
     res.json({ success: true, user: userWithoutPass });
 });
 
-// Admin Stats (Agora com lista de usuários)
+// Admin Stats
 app.get('/api/admin/stats', (req, res) => {
     res.json({
         ...globalState.stats,
@@ -92,9 +90,12 @@ app.post('/api/payout', async (req, res) => {
 
 const distPath = path.join(__dirname, 'dist');
 app.use(express.static(distPath));
+
 app.get('*', (req, res) => {
-    if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
     res.sendFile(path.join(distPath, 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Port: ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📁 Servindo arquivos de: ${distPath}`);
+});
