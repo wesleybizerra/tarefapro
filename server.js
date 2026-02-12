@@ -8,12 +8,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// Railway injeta a porta automaticamente. 0.0.0.0 é obrigatório no Docker.
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-// Rota de Healthcheck para o Railway
+// Rota de Healthcheck fundamental para o Railway saber que o app subiu
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 // --- ESTADO GLOBAL (MOCK) ---
@@ -63,20 +64,25 @@ app.post('/api/user/task', (req, res) => {
 
 const distPath = path.join(__dirname, 'dist');
 
+// Servir arquivos estáticos da pasta dist gerada pelo Vite
 if (fs.existsSync(distPath)) {
-    console.log(`✅ Servindo arquivos de: ${distPath}`);
     app.use(express.static(distPath));
+    console.log(`[Server] Pasta dist encontrada. Servindo arquivos estáticos.`);
+} else {
+    console.error(`[Server] ERRO: Pasta dist não encontrada em ${distPath}.`);
 }
 
+// Qualquer outra rota redireciona para o index.html (SPA)
 app.get('*', (req, res) => {
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send('Aguarde, a aplicação ainda está em build ou o arquivo index.html não foi gerado.');
+        res.status(404).send('Servidor ativo, mas os arquivos do frontend estão ausentes. Verifique o build.');
     }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor pronto na porta ${PORT}`);
+    console.log(`🚀 Servidor rodando em http://0.0.0.0:${PORT}`);
+    console.log(`✅ Healthcheck disponível em /health`);
 });
