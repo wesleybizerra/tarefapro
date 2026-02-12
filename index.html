@@ -16,22 +16,6 @@
       overflow-x: hidden;
     }
 
-    .animate-fade-in {
-      animation: fadeIn 0.4s ease-out forwards;
-    }
-
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
     #root {
       min-height: 100vh;
     }
@@ -40,6 +24,7 @@
 
 <body>
   <div id="root"></div>
+  <!-- O Vite substituirá este caminho durante o build para o arquivo otimizado -->
   <script type="module" src="/index.tsx"></script>
 </body>
 

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Buffer } from 'buffer';
 
-// Polyfill seguro para o Buffer no navegador
+// Polyfill para Buffer no navegador (necessário para algumas libs)
 if (typeof window !== 'undefined') {
   window.Buffer = window.Buffer || Buffer;
 }
@@ -323,7 +323,9 @@ const App: React.FC = () => {
   );
 };
 
-const rootElement = document.getElementById('root');
-if (rootElement) {
-  createRoot(rootElement).render(<App />);
+// Renderização robusta
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
 }
