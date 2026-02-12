@@ -1,14 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Wallet, CheckCircle, Clock, LayoutDashboard, LogOut,
-  Users, DollarSign, Activity, RefreshCw, Zap
+  Users, DollarSign, Activity, RefreshCw, Zap, User
 } from 'lucide-react';
 import { Buffer } from 'buffer';
 
-// Polyfill para Buffer no navegador (necessário para algumas libs)
+// Fix: Cast window to any to avoid TypeScript error about Buffer property not existing on Window.
 if (typeof window !== 'undefined') {
-  window.Buffer = window.Buffer || Buffer;
+  (window as any).Buffer = (window as any).Buffer || Buffer;
 }
 
 // --- TIPOS ---
@@ -42,6 +43,7 @@ const StatCard = ({ title, value, icon, trend, variant = 'light' }: { title: str
 
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('LOADING');
+  const [isLoginMode, setIsLoginMode] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [loading, setLoading] = useState(false);
   const [withdrawStatus, setWithdrawStatus] = useState<'IDLE' | 'PROCESSING' | 'SUCCESS' | 'ERROR'>('IDLE');
@@ -95,19 +97,22 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleAuth = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
     setTimeout(() => {
       setLoading(false);
       const isWesley = formData.email.toLowerCase() === ADMIN_EMAIL && formData.password === ADMIN_PASS;
+
       const newMode: ViewMode = isWesley ? 'ADMIN' : 'USER';
       const newUserData = {
         ...userData,
         email: formData.email,
-        name: isWesley ? "Wesley Bizerra" : (formData.name || "Consultor"),
-        pixKey: isWesley ? ADMIN_PIX : "Chave_PIX_Exemplo"
+        name: isWesley ? "Wesley Bizerra" : (formData.name || (isLoginMode ? "Consultor" : formData.name)),
+        pixKey: isWesley ? ADMIN_PIX : (userData.pixKey || "Pendente_Configuração")
       };
+
       setUserData(newUserData);
       setViewMode(newMode);
       localStorage.setItem('tarefapro_session', JSON.stringify({ viewMode: newMode, userData: newUserData }));
@@ -183,9 +188,23 @@ const App: React.FC = () => {
             <Zap size={40} fill="currentColor" />
           </div>
           <h1 className="text-3xl font-black text-slate-900">TarefaPro</h1>
-          <Badge variant="premium">Acesso Seguro</Badge>
+          <Badge variant="premium">{isLoginMode ? 'Acesso Seguro' : 'Nova Conta'}</Badge>
         </div>
-        <form onSubmit={handleLogin} className="space-y-6">
+
+        <form onSubmit={handleAuth} className="space-y-4">
+          {!isLoginMode && (
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Nome Completo"
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none font-bold focus:border-indigo-300 transition-colors"
+                required
+              />
+              <User className="absolute right-6 top-5 text-slate-300" size={20} />
+            </div>
+          )}
+
           <input
             type="email"
             placeholder="E-mail"
@@ -193,6 +212,7 @@ const App: React.FC = () => {
             className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none font-bold focus:border-indigo-300 transition-colors"
             required
           />
+
           <input
             type="password"
             placeholder="Senha"
@@ -200,14 +220,28 @@ const App: React.FC = () => {
             className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none font-bold focus:border-indigo-300 transition-colors"
             required
           />
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-6 bg-indigo-600 text-white rounded-3xl font-black shadow-xl hover:bg-indigo-700 transition-all uppercase disabled:opacity-50"
+            className="w-full mt-4 py-6 bg-indigo-600 text-white rounded-3xl font-black shadow-xl hover:bg-indigo-700 transition-all uppercase disabled:opacity-50"
           >
-            {loading ? 'Aguarde...' : 'Entrar'}
+            {loading ? 'Processando...' : (isLoginMode ? 'Entrar' : 'Criar minha conta')}
           </button>
         </form>
+
+        <div className="mt-8 text-center">
+          <button
+            onClick={() => setIsLoginMode(!isLoginMode)}
+            className="text-slate-400 font-bold text-sm hover:text-indigo-600 transition-colors"
+          >
+            {isLoginMode ? (
+              <span>Ainda não tem conta? <strong className="text-indigo-600">Cadastre-se</strong></span>
+            ) : (
+              <span>Já possui uma conta? <strong className="text-indigo-600">Entrar agora</strong></span>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
