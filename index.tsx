@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Buffer } from 'buffer';
 
-// Configuração Global de Buffer para compatibilidade com bibliotecas de criptografia no navegador
+// Polyfill seguro para o Buffer no navegador
 if (typeof window !== 'undefined') {
   window.Buffer = window.Buffer || Buffer;
 }
@@ -40,7 +40,6 @@ const StatCard = ({ title, value, icon, trend, variant = 'light' }: { title: str
   </div>
 );
 
-// --- APP PRINCIPAL ---
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('LOADING');
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -71,11 +70,16 @@ const App: React.FC = () => {
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
 
   useEffect(() => {
-    // Tenta recuperar sessão salva
     const savedSession = localStorage.getItem('tarefapro_session');
     const savedStats = localStorage.getItem('tarefapro_stats');
 
-    if (savedStats) setPlatformStats(JSON.parse(savedStats));
+    if (savedStats) {
+      try {
+        setPlatformStats(JSON.parse(savedStats));
+      } catch (e) {
+        console.error("Erro ao carregar stats");
+      }
+    }
 
     if (savedSession) {
       try {
@@ -94,7 +98,6 @@ const App: React.FC = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Simulação de delay de rede
     setTimeout(() => {
       setLoading(false);
       const isWesley = formData.email.toLowerCase() === ADMIN_EMAIL && formData.password === ADMIN_PASS;
@@ -320,8 +323,7 @@ const App: React.FC = () => {
   );
 };
 
-const container = document.getElementById('root');
-if (container) {
-  const root = createRoot(container);
-  root.render(<App />);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  createRoot(rootElement).render(<App />);
 }

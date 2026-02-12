@@ -18,13 +18,12 @@ app.use(express.json());
 app.post('/api/payout', async (req, res) => {
     const ASAAS_KEY = process.env.ASAAS_API_KEY;
     if (!ASAAS_KEY) {
-        return res.status(500).json({ error: 'Configuração ASAAS_API_KEY ausente no servidor.' });
+        console.error('[SERVER] ASAAS_API_KEY não configurada.');
+        return res.status(500).json({ error: 'Configuração bancária ausente no servidor.' });
     }
 
     try {
         const { amount, pixKey, pixKeyType, description } = req.body;
-
-        console.log(`[API] Solicitando saque de R$ ${amount} para chave ${pixKey}`);
 
         const response = await axios.post(
             'https://api.asaas.com/v3/transfers',
@@ -46,30 +45,24 @@ app.post('/api/payout', async (req, res) => {
         res.json({ success: true, asaasId: response.data.id });
     } catch (error) {
         const msg = error.response?.data?.errors?.[0]?.description || error.message;
-        console.error('[API] Erro Asaas:', msg);
-        res.status(500).json({ error: 'Erro bancário', details: msg });
+        console.error('[API ERROR]:', msg);
+        res.status(500).json({ error: 'Erro no processamento PIX', details: msg });
     }
 });
 
-// Caminho da pasta de build do Vite
 const distPath = path.join(__dirname, 'dist');
 
-// Servir arquivos estáticos
 app.use(express.static(distPath));
 
-// Fallback para SPA (Single Page Application)
 app.get('*', (req, res) => {
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send('Build do frontend não encontrado. Por favor, execute: npm run build');
+        res.status(404).send('Frontend não encontrado. Execute npm run build.');
     }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n=========================================`);
-    console.log(`🚀 TAREFAPRO RODANDO NA PORTA: ${PORT}`);
-    console.log(`📂 SERVINDO FRONTEND EM: ${distPath}`);
-    console.log(`=========================================\n`);
+    console.log(`🚀 Servidor pronto na porta ${PORT}`);
 });
