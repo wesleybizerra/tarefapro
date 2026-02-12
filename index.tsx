@@ -1,16 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  Wallet, CheckCircle, Clock, ArrowUpRight, Award,
-  ShieldCheck, TrendingUp, LayoutDashboard, LogOut, User as UserIcon,
-  Lock, Smartphone, Mail, Shield, Scale, ChevronRight, Info, Eye, EyeOff,
-  Users, DollarSign, Activity, AlertCircle, Trash2, RefreshCw, Zap
+  Wallet, CheckCircle, Clock, LayoutDashboard, LogOut,
+  Users, DollarSign, Activity, RefreshCw, Zap
 } from 'lucide-react';
 import { Buffer } from 'buffer';
 
-// Configuração Global de Buffer para Criptografia
+// Configuração Global de Buffer para compatibilidade com bibliotecas de criptografia no navegador
 if (typeof window !== 'undefined') {
-  (window as any).Buffer = Buffer;
+  window.Buffer = window.Buffer || Buffer;
 }
 
 // --- TIPOS ---
@@ -47,7 +45,6 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('LOADING');
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [loading, setLoading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [withdrawStatus, setWithdrawStatus] = useState<'IDLE' | 'PROCESSING' | 'SUCCESS' | 'ERROR'>('IDLE');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -74,16 +71,21 @@ const App: React.FC = () => {
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
 
   useEffect(() => {
+    // Tenta recuperar sessão salva
     const savedSession = localStorage.getItem('tarefapro_session');
     const savedStats = localStorage.getItem('tarefapro_stats');
 
     if (savedStats) setPlatformStats(JSON.parse(savedStats));
 
     if (savedSession) {
-      const { viewMode: savedMode, userData: savedUser } = JSON.parse(savedSession);
-      setUserData(savedUser);
-      setViewMode(savedMode);
-      setActiveTab(savedMode === 'ADMIN' ? 'admin_overview' : 'dashboard');
+      try {
+        const { viewMode: savedMode, userData: savedUser } = JSON.parse(savedSession);
+        setUserData(savedUser);
+        setViewMode(savedMode);
+        setActiveTab(savedMode === 'ADMIN' ? 'admin_overview' : 'dashboard');
+      } catch (e) {
+        setViewMode('AUTH');
+      }
     } else {
       setViewMode('AUTH');
     }
@@ -92,6 +94,7 @@ const App: React.FC = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    // Simulação de delay de rede
     setTimeout(() => {
       setLoading(false);
       const isWesley = formData.email.toLowerCase() === ADMIN_EMAIL && formData.password === ADMIN_PASS;
@@ -106,7 +109,7 @@ const App: React.FC = () => {
       setViewMode(newMode);
       localStorage.setItem('tarefapro_session', JSON.stringify({ viewMode: newMode, userData: newUserData }));
       setActiveTab(isWesley ? 'admin_overview' : 'dashboard');
-    }, 1000);
+    }, 800);
   };
 
   const handleWithdraw = async () => {
@@ -180,9 +183,25 @@ const App: React.FC = () => {
           <Badge variant="premium">Acesso Seguro</Badge>
         </div>
         <form onSubmit={handleLogin} className="space-y-6">
-          <input type="email" placeholder="E-mail" onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none font-bold" required />
-          <input type="password" placeholder="Senha" onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none font-bold" required />
-          <button type="submit" disabled={loading} className="w-full py-6 bg-indigo-600 text-white rounded-3xl font-black shadow-xl hover:bg-indigo-700 transition-all uppercase">
+          <input
+            type="email"
+            placeholder="E-mail"
+            onChange={e => setFormData({ ...formData, email: e.target.value })}
+            className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none font-bold focus:border-indigo-300 transition-colors"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            onChange={e => setFormData({ ...formData, password: e.target.value })}
+            className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-3xl outline-none font-bold focus:border-indigo-300 transition-colors"
+            required
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-6 bg-indigo-600 text-white rounded-3xl font-black shadow-xl hover:bg-indigo-700 transition-all uppercase disabled:opacity-50"
+          >
             {loading ? 'Aguarde...' : 'Entrar'}
           </button>
         </form>
@@ -198,10 +217,23 @@ const App: React.FC = () => {
           <span className="font-black text-2xl text-slate-900">TarefaPro</span>
         </div>
         <nav className="space-y-4">
-          <button onClick={() => setActiveTab(viewMode === 'ADMIN' ? 'admin_overview' : 'dashboard')} className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest ${activeTab !== 'wallet' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><LayoutDashboard /> Home</button>
-          <button onClick={() => setActiveTab('wallet')} className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><Wallet /> Carteira</button>
+          <button
+            onClick={() => setActiveTab(viewMode === 'ADMIN' ? 'admin_overview' : 'dashboard')}
+            className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all ${activeTab !== 'wallet' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
+          >
+            <LayoutDashboard /> Home
+          </button>
+          <button
+            onClick={() => setActiveTab('wallet')}
+            className={`w-full flex items-center gap-5 px-7 py-5 rounded-3xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
+          >
+            <Wallet /> Carteira
+          </button>
         </nav>
-        <button onClick={() => { localStorage.removeItem('tarefapro_session'); window.location.reload(); }} className="mt-auto flex items-center gap-5 px-7 py-5 text-slate-400 font-black text-xs uppercase hover:text-red-500">
+        <button
+          onClick={() => { localStorage.removeItem('tarefapro_session'); window.location.reload(); }}
+          className="mt-auto flex items-center gap-5 px-7 py-5 text-slate-400 font-black text-xs uppercase hover:text-red-500 transition-colors"
+        >
           <LogOut /> Sair
         </button>
       </aside>
@@ -288,5 +320,8 @@ const App: React.FC = () => {
   );
 };
 
-const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
+}
