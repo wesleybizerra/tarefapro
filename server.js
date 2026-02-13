@@ -16,7 +16,6 @@ app.use(express.json());
 
 /** 
  * CREDENCIAIS DE PRODUÇÃO MERCADO PAGO
- * Fornecidas pelo usuário: wesleybizerra01
  */
 const MP_ACCESS_TOKEN = "APP_USR-5486188186277562-123109-0c5bb1142056dd529240d38a493ce08d-650681524";
 const MP_PUBLIC_KEY = "APP_USR-54514598-de68-42a2-baa9-00129449da87";
@@ -38,8 +37,8 @@ const db = {
             email: "wesleybizerra01@outlook.com",
             password: "Cadernorox@27",
             role: "USER",
-            points: 0, // CONTA ZERADA CONFORME SOLICITADO
-            balance: 0.0,
+            points: 0, // RESETADO: 0 PONTOS
+            balance: 0.0, // RESETADO: 0 SALDO
             plan: 'FREE',
             completedMissions: []
         }
@@ -69,7 +68,7 @@ app.post('/api/login', (req, res) => {
 app.get('/api/sync', (req, res) => {
     const { email } = req.query;
     const user = db.users.find(u => u.email === email);
-    if (!user) return res.status(404).send('Not found');
+    if (!user) return res.status(404).json({ error: 'Not found' });
     res.json({ user, stats: db.stats });
 });
 
@@ -86,19 +85,24 @@ app.post('/api/confirm-payment', (req, res) => {
     }
 });
 
-// Lógica de Missão: PONTOS FIXOS E TRAVA 1X POR DIA
+// Lógica de Missão: CORREÇÃO DE NULL E PONTOS NÃO COMPUTADOS
 app.post('/api/complete-mission', (req, res) => {
-    const { email, missionId, points } = req.body;
+    const { email, missionId } = req.body;
+    let points = Number(req.body.points); // Garantir que é número
+
     const user = db.users.find(u => u.email === email);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
-    // Pega data atual no formato YYYY-MM-DD
+    if (!points || isNaN(points)) {
+        return res.status(400).json({ error: 'Valor de pontos inválido.' });
+    }
+
     const today = new Date().toISOString().split('T')[0];
 
     // Verifica se a missão já consta como concluída para HOJE
-    const alreadyDone = user.completedMissions.some(m => m.id === missionId && m.date === today);
+    const alreadyDone = (user.completedMissions || []).some(m => m.id === missionId && m.date === today);
     if (alreadyDone) {
-        return res.status(400).json({ error: 'Você já completou esta missão hoje. Tente amanhã!' });
+        return res.status(400).json({ error: 'Missão já realizada hoje.' });
     }
 
     // Multiplicador baseado no plano VIP
@@ -107,18 +111,26 @@ app.post('/api/complete-mission', (req, res) => {
     if (user.plan === 'PRO') multiplier = 1.15;
     if (user.plan === 'ELITE') multiplier = 1.30;
 
-    // Usa EXATAMENTE o valor de pontos enviado (que vem da definição da missão no frontend)
     const earnedPoints = Math.floor(points * multiplier);
-    user.points += earnedPoints;
 
-    // Salva no histórico para impedir repetição no mesmo dia
+    // Atualiza pontos do usuário
+    user.points = (user.points || 0) + earnedPoints;
+
+    // Garante inicialização do array e salva conclusão
+    if (!user.completedMissions) user.completedMissions = [];
     user.completedMissions.push({ id: missionId, date: today });
 
     // Comissão administrativa (Simulação)
-    const adminCommission = (earnedPoints / 1000) * 1.5;
-    db.stats.adminCommission += adminCommission;
+    const commission = (earnedPoints / 1000) * 1.5;
+    db.stats.adminCommission += commission;
 
-    res.json({ success: true, user, earnedPoints });
+    console.log(`[Missão] User: ${email}, ID: ${missionId}, Ganhos: ${earnedPoints}, Total: ${user.points}`);
+
+    res.json({
+        success: true,
+        user: { ...user }, // Retorna cópia fresca do usuário
+        earnedPoints
+    });
 });
 
 app.post('/api/convert-points', (req, res) => {
@@ -171,11 +183,7 @@ app.post('/api/create-preference', async (req, res) => {
                     quantity: 1,
                     currency_id: "BRL"
                 }],
-                payment_methods: {
-                    installments: 1,
-                    // Garante que PIX esteja disponível (configurável também no painel MP)
-                    excluded_payment_types: []
-                },
+                payment_methods: { installments: 1, excluded_payment_types: [] },
                 back_urls: {
                     success: `${req.headers.origin}/?status=success&plan=${planId}&email=${email}`,
                     failure: `${req.headers.origin}/?status=failure`,
@@ -188,7 +196,7 @@ app.post('/api/create-preference', async (req, res) => {
         res.json({ init_point: response.data.init_point });
     } catch (error) {
         console.error("MP API Error:", error.response?.data || error.message);
-        res.status(500).json({ error: "Erro ao conectar com o Mercado Pago de produção." });
+        res.status(500).json({ error: "Erro ao conectar com o Mercado Pago." });
     }
 });
 
