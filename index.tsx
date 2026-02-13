@@ -26,12 +26,7 @@ const Badge: React.FC<BadgeProps> = ({ children, variant = 'default' }) => {
   return <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${styles[variant]}`}>{children}</span>;
 };
 
-interface CardProps {
-  children?: React.ReactNode;
-  className?: string;
-}
-
-const Card: React.FC<CardProps> = ({ children, className = "" }) => (
+const Card: React.FC<{ children?: React.ReactNode; className?: string }> = ({ children, className = "" }) => (
   <div className={`bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 ${className}`}>
     {children}
   </div>
@@ -43,11 +38,9 @@ const App: React.FC = () => {
   const [userData, setUserData] = useState<any>({
     name: "Usuário", email: "", points: 0, balance: 0.00, plan: 'FREE', pixKey: '', pixType: 'CPF', completedMissions: []
   });
-  const [platformStats, setPlatformStats] = useState<any>({ adminCommission: 0, activeUsers: 0, members: [] });
+  const [loading, setLoading] = useState(false);
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
-  const [loading, setLoading] = useState(false);
-  const [paymentProcessing, setPaymentProcessing] = useState(false);
 
   const dailyMissions = [
     { id: 1, title: "Avaliar App na Store", points: 150, description: "Dê 5 estrelas e comente algo positivo." },
@@ -61,18 +54,15 @@ const App: React.FC = () => {
   ];
 
   const fetchSync = useCallback(async () => {
-    if (!userData.email) return;
+    if (!userData?.email) return;
     try {
       const res = await fetch(`/api/sync?email=${userData.email}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.user) {
-          setUserData(prev => ({ ...prev, ...data.user }));
-          if (viewMode === 'ADMIN') setPlatformStats(data.stats);
-        }
+        if (data.user) setUserData(data.user);
       }
     } catch (e) { }
-  }, [userData.email, viewMode]);
+  }, [userData?.email]);
 
   useEffect(() => {
     const saved = localStorage.getItem('tarefapro_session');
@@ -80,18 +70,18 @@ const App: React.FC = () => {
       const user = JSON.parse(saved);
       setUserData(user);
       setViewMode(user.role === 'ADMIN' ? 'ADMIN' : 'USER');
-      setActiveTab(user.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
+      setActiveTab('dashboard');
     } else {
       setViewMode('AUTH');
     }
   }, []);
 
   useEffect(() => {
-    if (userData.email) {
+    if (userData?.email) {
       const interval = setInterval(fetchSync, 10000);
       return () => clearInterval(interval);
     }
-  }, [userData.email, fetchSync]);
+  }, [userData?.email, fetchSync]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,7 +97,7 @@ const App: React.FC = () => {
         setUserData(data.user);
         localStorage.setItem('tarefapro_session', JSON.stringify(data.user));
         setViewMode(data.user.role === 'ADMIN' ? 'ADMIN' : 'USER');
-        setActiveTab(data.user.role === 'ADMIN' ? 'admin_overview' : 'dashboard');
+        setActiveTab('dashboard');
       } else { alert(data.error); }
     } finally { setLoading(false); }
   };
@@ -127,22 +117,71 @@ const App: React.FC = () => {
         localStorage.setItem('tarefapro_session', JSON.stringify(data.user));
         alert(`Sucesso! Você ganhou ${data.earnedPoints} pontos.`);
       } else {
-        alert(data.error || "Erro ao completar missão.");
+        alert(data.error || "Erro ao processar.");
       }
     } catch (e) {
-      alert("Erro na conexão com o servidor.");
+      alert("Erro de conexão.");
     } finally {
       setLoading(false);
     }
   };
 
+  const buyPlan = async (planId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/create-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId, email: userData.email })
+      });
+      const data = await res.json();
+      if (data.init_point) window.location.href = data.init_point;
+    } catch (e) { alert("Erro ao gerar pagamento."); }
+    finally { setLoading(false); }
+  };
+
+  const convertPoints = async () => {
+    if ((userData.points || 0) < 1000) return alert("Mínimo 1.000 pontos para trocar.");
+    setLoading(true);
+    try {
+      const res = await fetch('/api/convert-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userData.email })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUserData(data.user);
+        alert("Conversão realizada com sucesso!");
+      }
+    } finally { setLoading(false); }
+  };
+
+  const handleWithdrawal = async () => {
+    if ((userData.balance || 0) < 1.0) return alert("Saldo mínimo R$ 1,00.");
+    if (!userData.pixKey) return alert("Preencha sua chave PIX.");
+    setLoading(true);
+    try {
+      const res = await fetch('/api/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userData.email, pixKey: userData.pixKey, pixType: userData.pixType })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUserData(data.user);
+        alert(data.message);
+      }
+    } finally { setLoading(false); }
+  };
+
   const isMissionCompleted = (missionId: number) => {
-    if (!userData.completedMissions || !Array.isArray(userData.completedMissions)) return false;
+    if (!userData?.completedMissions) return false;
     const today = new Date().toISOString().split('T')[0];
     return userData.completedMissions.some((m: any) => m.id === missionId && m.date === today);
   };
 
-  if (viewMode === 'LOADING') return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black text-2xl animate-pulse">TAREFAPRO...</div>;
+  if (viewMode === 'LOADING') return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black text-2xl animate-pulse tracking-tighter">TAREFAPRO...</div>;
 
   if (viewMode === 'AUTH') return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -155,15 +194,15 @@ const App: React.FC = () => {
           <p className="text-slate-400 font-bold text-xs tracking-widest uppercase">{isLoginMode ? 'Bem-vindo de volta' : 'Crie sua conta'}</p>
         </div>
         <form onSubmit={handleAuth} className="space-y-3">
-          {!isLoginMode && <input type="text" placeholder="Nome Completo" required onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border border-transparent focus:border-indigo-600 outline-none" />}
-          <input type="email" placeholder="E-mail" required onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border border-transparent focus:border-indigo-600 outline-none" />
-          <input type="password" placeholder="Senha" required onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border border-transparent focus:border-indigo-600 outline-none" />
+          {!isLoginMode && <input type="text" placeholder="Nome" required onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border-transparent focus:border-indigo-600 outline-none border" />}
+          <input type="email" placeholder="E-mail" required onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border-transparent focus:border-indigo-600 outline-none border" />
+          <input type="password" placeholder="Senha" required onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border-transparent focus:border-indigo-600 outline-none border" />
           <button disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase shadow-lg hover:scale-[1.02] transition-transform">
-            {loading ? 'Aguarde...' : (isLoginMode ? 'Entrar' : 'Começar Agora')}
+            {loading ? 'Processando...' : (isLoginMode ? 'Entrar' : 'Cadastrar')}
           </button>
         </form>
         <button onClick={() => setIsLoginMode(!isLoginMode)} className="w-full mt-6 text-slate-400 font-bold text-sm">
-          {isLoginMode ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login'}
+          {isLoginMode ? 'Criar nova conta' : 'Já possuo conta'}
         </button>
       </Card>
     </div>
@@ -177,24 +216,20 @@ const App: React.FC = () => {
           TarefaPro
         </div>
         <nav className="space-y-2 flex-1">
-          <button onClick={() => setActiveTab(viewMode === 'ADMIN' ? 'admin_overview' : 'dashboard')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'dashboard' || activeTab === 'admin_overview' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+          <button onClick={() => setActiveTab('dashboard')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
             <LayoutDashboard size={18} /> Dashboard
           </button>
-          {viewMode === 'USER' && (
-            <>
-              <button onClick={() => setActiveTab('missions')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'missions' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
-                <Trophy size={18} /> Missões Diárias
-              </button>
-              <button onClick={() => setActiveTab('plans')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'plans' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
-                <Star size={18} /> Planos VIP
-              </button>
-              <button onClick={() => setActiveTab('wallet')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
-                <Wallet size={18} /> Minha Carteira
-              </button>
-            </>
-          )}
+          <button onClick={() => setActiveTab('missions')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'missions' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <Trophy size={18} /> Missões Diárias
+          </button>
+          <button onClick={() => setActiveTab('plans')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'plans' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <Star size={18} /> Planos VIP
+          </button>
+          <button onClick={() => setActiveTab('wallet')} className={`w-full text-left px-6 py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest flex items-center gap-3 ${activeTab === 'wallet' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <Wallet size={18} /> Minha Carteira
+          </button>
         </nav>
-        <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="flex items-center gap-3 px-6 py-4 text-slate-400 font-black text-[11px] uppercase tracking-widest hover:text-red-500 transition-colors">
+        <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="flex items-center gap-3 px-6 py-4 text-slate-400 font-black text-[11px] uppercase tracking-widest hover:text-red-500">
           <LogOut size={18} /> Sair
         </button>
       </aside>
@@ -202,44 +237,55 @@ const App: React.FC = () => {
       <main className="flex-1 p-6 lg:p-12 overflow-y-auto max-h-screen">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
           <div>
-            <h1 className="text-3xl font-black tracking-tighter">Olá, {userData.name?.split(' ')[0]}</h1>
+            <h1 className="text-3xl font-black tracking-tighter">Olá, {userData?.name?.split(' ')[0] || 'Usuário'}</h1>
             <div className="flex gap-2 mt-2">
-              <Badge variant="success">{userData.role}</Badge>
-              <Badge variant={userData.plan === 'FREE' ? 'default' : 'premium'}>{userData.plan}</Badge>
+              <Badge variant="success">{userData?.role || 'USER'}</Badge>
+              <Badge variant={userData?.plan === 'FREE' ? 'default' : 'premium'}>{userData?.plan || 'FREE'}</Badge>
             </div>
           </div>
           <div className="flex gap-4">
             <Card className="flex items-center gap-4 py-3 px-6">
-              <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Trophy size={20} /></div>
+              <Trophy size={20} className="text-amber-600" />
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pontos</p>
-                <p className="text-xl font-black text-slate-900">{(userData.points || 0).toLocaleString()}</p>
+                <p className="text-xl font-black">{(userData?.points || 0).toLocaleString()}</p>
               </div>
             </Card>
             <Card className="flex items-center gap-4 py-3 px-6">
-              <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><DollarSign size={20} /></div>
+              <DollarSign size={20} className="text-emerald-600" />
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo</p>
-                <p className="text-xl font-black text-emerald-600">R$ {(userData.balance || 0).toFixed(2)}</p>
+                <p className="text-xl font-black text-emerald-600">R$ {(userData?.balance || 0).toFixed(2)}</p>
               </div>
             </Card>
           </div>
         </header>
 
+        {activeTab === 'dashboard' && (
+          <Card className="bg-gradient-to-br from-indigo-600 to-purple-700 p-10 text-white relative overflow-hidden">
+            <div className="relative z-10">
+              <h2 className="text-4xl font-black mb-4 tracking-tighter leading-tight">Ganhe Dinheiro Real<br />Avaliando Aplicativos</h2>
+              <p className="text-indigo-100 font-bold mb-8 max-w-sm">Complete micro-tarefas diárias e receba via PIX instantâneo.</p>
+              <button onClick={() => setActiveTab('missions')} className="bg-white text-indigo-600 px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Iniciar Agora</button>
+            </div>
+            <Zap className="absolute right-[-20px] bottom-[-20px] text-white/10" size={300} fill="currentColor" />
+          </Card>
+        )}
+
         {activeTab === 'missions' && (
           <div className="space-y-6">
-            <h2 className="text-2xl font-black tracking-tight">Missões Profissionais</h2>
+            <h2 className="text-2xl font-black tracking-tight">Missões Diárias</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {dailyMissions.map((m) => {
                 const completed = isMissionCompleted(m.id);
                 return (
-                  <Card key={m.id} className={`flex items-center justify-between transition-all ${completed ? 'bg-slate-50 opacity-70' : 'hover:border-indigo-200'}`}>
+                  <Card key={m.id} className={`flex items-center justify-between transition-all ${completed ? 'bg-slate-50 opacity-60' : 'hover:border-indigo-200'}`}>
                     <div className="flex gap-4 items-center">
                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${completed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-50 text-indigo-600'}`}>
                         <CheckCircle size={24} />
                       </div>
                       <div>
-                        <h3 className={`font-black ${completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{m.title}</h3>
+                        <h3 className={`font-black ${completed ? 'text-slate-400' : 'text-slate-900'}`}>{m.title}</h3>
                         <p className="text-xs text-slate-400 font-medium">{m.description}</p>
                       </div>
                     </div>
@@ -248,12 +294,9 @@ const App: React.FC = () => {
                       <button
                         disabled={completed || loading}
                         onClick={() => completeMission(m.id, m.points)}
-                        className={`mt-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${completed
-                            ? 'bg-emerald-500 text-white cursor-default'
-                            : 'bg-slate-900 text-white hover:bg-indigo-600'
-                          } disabled:opacity-50`}
+                        className={`mt-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${completed ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-indigo-600'}`}
                       >
-                        {completed ? 'Concluída' : loading ? 'Processando...' : 'Concluir'}
+                        {completed ? 'OK' : 'Concluir'}
                       </button>
                     </div>
                   </Card>
@@ -263,20 +306,54 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'dashboard' && (
-          <Card className="bg-gradient-to-br from-indigo-600 to-purple-700 p-10 text-white relative overflow-hidden">
-            <h2 className="text-4xl font-black mb-4 tracking-tighter">Multiplique sua Renda Diária</h2>
-            <button onClick={() => setActiveTab('missions')} className="bg-white text-indigo-600 px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Ir para Missões</button>
-          </Card>
+        {activeTab === 'plans' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { id: 'start', name: 'Iniciante', price: 5, bonus: '5%' },
+              { id: 'pro', name: 'Pro VIP', price: 10, bonus: '15%', featured: true },
+              { id: 'elite', name: 'Elite Master', price: 15, bonus: '30%' },
+            ].map((p) => (
+              <Card key={p.id} className={`${p.featured ? 'border-indigo-600 ring-4 ring-indigo-50' : ''}`}>
+                <h3 className="text-xl font-black">{p.name}</h3>
+                <p className="text-3xl font-black mt-2">R$ {p.price.toFixed(2)}</p>
+                <ul className="mt-6 space-y-3 mb-8 text-sm font-bold text-slate-600">
+                  <li><CheckCircle size={14} className="inline text-emerald-500 mr-2" /> Bônus de {p.bonus} nos ganhos</li>
+                  <li><CheckCircle size={14} className="inline text-emerald-500 mr-2" /> Saque PIX Prioritário</li>
+                </ul>
+                <button onClick={() => buyPlan(p.id)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-indigo-600 transition-colors">Ativar Plano</button>
+              </Card>
+            ))}
+          </div>
         )}
 
-        {/* Outras abas simplificadas para garantir estabilidade visual */}
-        {(activeTab === 'plans' || activeTab === 'wallet') && (
-          <div className="text-center p-20 bg-white rounded-[3rem] border border-dashed">
-            <Clock className="mx-auto text-slate-300 mb-4" size={48} />
-            <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">Em Breve</h2>
-            <p className="text-slate-400 font-bold text-sm mt-2">Funcionalidade sendo otimizada para produção.</p>
-            <button onClick={() => setActiveTab('dashboard')} className="mt-8 text-indigo-600 font-black uppercase text-xs tracking-widest underline">Voltar ao Início</button>
+        {activeTab === 'wallet' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <Card className="space-y-6">
+              <h2 className="font-black text-xl flex items-center gap-3"><ArrowRightLeft className="text-indigo-600" /> Converter Pontos</h2>
+              <div className="bg-slate-50 p-8 rounded-[2rem] text-center border">
+                <p className="text-slate-400 font-black uppercase text-[10px] mb-2">Seus Pontos</p>
+                <p className="text-4xl font-black text-indigo-600">{(userData?.points || 0).toLocaleString()}</p>
+                <div className="mt-6 text-xs font-bold text-slate-400">Taxa: 1.000 PTS = R$ 1,00</div>
+              </div>
+              <button onClick={convertPoints} disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg">Sacar para Saldo</button>
+            </Card>
+
+            <Card className="space-y-6">
+              <h2 className="font-black text-xl flex items-center gap-3"><Smartphone className="text-emerald-600" /> Saque PIX</h2>
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  {['CPF', 'EMAIL', 'CELULAR', 'CHAVE_ALEATORIA'].map(type => (
+                    <button key={type} onClick={() => setUserData({ ...userData, pixType: type })} className={`flex-1 py-2 rounded-xl text-[9px] font-black border transition-all ${userData.pixType === type ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400'}`}>{type}</button>
+                  ))}
+                </div>
+                <input type="text" placeholder="Chave PIX" value={userData.pixKey || ''} onChange={e => setUserData({ ...userData, pixKey: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none border border-transparent focus:border-emerald-600" />
+                <div className="p-4 bg-emerald-50 rounded-2xl flex justify-between items-center text-sm font-bold text-emerald-700 border border-emerald-100">
+                  <span>Disponível:</span>
+                  <span className="font-black text-lg">R$ {(userData?.balance || 0).toFixed(2)}</span>
+                </div>
+                <button onClick={handleWithdrawal} disabled={loading} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg">Solicitar Transferência</button>
+              </div>
+            </Card>
           </div>
         )}
       </main>
