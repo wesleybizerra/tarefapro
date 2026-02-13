@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
   <title>TarefaPro - Renda Extra Profissional</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
@@ -14,15 +14,25 @@
       margin: 0;
       background-color: #f8fafc;
       overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
     }
 
     #root {
       min-height: 100vh;
     }
 
-    .glass {
-      background: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(10px);
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Melhoria visual para mobile inputs */
+    input {
+      font-size: 16px !important;
     }
   </style>
 </head>
