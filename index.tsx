@@ -49,12 +49,16 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
 
-  // Missões Diárias Estáticas
+  // Missões Diárias (Pelo menos 7 missões)
   const dailyMissions = [
     { id: 1, title: "Avaliar App na Store", points: 150, description: "Dê 5 estrelas e comente algo positivo." },
-    { id: 2, title: "Responder Pesquisa de Mercado", points: 350, description: "Pesquisa sobre hábitos de consumo." },
-    { id: 3, title: "Assistir Vídeo Tutorial", points: 80, description: "Aprenda a usar a plataforma em 2 min." },
-    { id: 4, title: "Seguir no Instagram", points: 120, description: "Acompanhe as novidades da TarefaPro." },
+    { id: 2, title: "Responder Pesquisa", points: 250, description: "Pesquisa rápida sobre hábitos diários." },
+    { id: 3, title: "Assistir Vídeo Tutorial", points: 80, description: "Aprenda a lucrar mais em 1 minuto." },
+    { id: 4, title: "Seguir no Instagram", points: 120, description: "Fique por dentro das promoções." },
+    { id: 5, title: "Check-in Diário", points: 20, description: "Bônus por apenas abrir o app hoje." },
+    { id: 6, title: "Compartilhar Link VIP", points: 180, description: "Compartilhe no seu status do WhatsApp." },
+    { id: 7, title: "Ler Artigo de Dicas", points: 50, description: "Dicas de como economizar investindo." },
+    { id: 8, title: "Feedback da Plataforma", points: 200, description: "Diga o que podemos melhorar." },
   ];
 
   const fetchSync = async () => {
@@ -88,7 +92,6 @@ const App: React.FC = () => {
             setUserData(data.user);
             localStorage.setItem('tarefapro_session', JSON.stringify(data.user));
             alert(`Parabéns! Seu plano ${data.user.plan} foi ativado com sucesso.`);
-            // Limpa a URL
             window.history.replaceState({}, document.title, "/");
           }
         } catch (e) {
@@ -176,7 +179,38 @@ const App: React.FC = () => {
       });
       const data = await res.json();
       setUserData(data.user);
+      alert("Pontos convertidos com sucesso!");
     } catch (e) { }
+  };
+
+  // Implementação da função de Saque
+  const handleWithdrawal = async () => {
+    if (userData.balance < 1.0) return alert("Saldo insuficiente para saque (Mínimo R$ 1,00).");
+    if (!userData.pixKey) return alert("Por favor, preencha sua chave PIX.");
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userData.email,
+          pixKey: userData.pixKey,
+          pixType: userData.pixType
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUserData(data.user);
+        alert(data.message);
+      } else {
+        alert(data.error);
+      }
+    } catch (e) {
+      alert("Erro ao processar saque.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (viewMode === 'LOADING') return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black text-2xl animate-pulse">TAREFAPRO...</div>;
@@ -202,22 +236,12 @@ const App: React.FC = () => {
         <button onClick={() => setIsLoginMode(!isLoginMode)} className="w-full mt-6 text-slate-400 font-bold text-sm">
           {isLoginMode ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login'}
         </button>
-        <div className="mt-8 pt-8 border-t">
-          <p className="text-[10px] text-center text-slate-400 font-black uppercase tracking-[0.2em] mb-4">Conta Teste Master</p>
-          <button
-            onClick={() => setFormData({ email: 'wesleybizerra01@outlook.com', password: 'Cadernorox@27', name: '' })}
-            className="w-full text-xs font-bold text-indigo-600 bg-indigo-50 py-3 rounded-xl hover:bg-indigo-100 transition-colors"
-          >
-            Preencher Dados Elite (wesleybizerra01)
-          </button>
-        </div>
       </Card>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
-      {/* Overlay de Pagamento */}
       {paymentProcessing && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-md flex items-center justify-center text-white">
           <div className="text-center p-10 bg-white rounded-[3rem] text-slate-900 shadow-2xl">
@@ -228,7 +252,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Sidebar */}
       <aside className="w-80 bg-white border-r p-10 hidden lg:flex flex-col">
         <div className="flex items-center gap-3 mb-12 font-black text-2xl">
           <div className="p-2 bg-indigo-600 rounded-xl text-white"><Zap fill="currentColor" size={20} /></div>
@@ -257,7 +280,6 @@ const App: React.FC = () => {
         </button>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 p-6 lg:p-12 overflow-y-auto max-h-screen">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
           <div>
@@ -301,8 +323,8 @@ const App: React.FC = () => {
         {activeTab === 'missions' && (
           <div className="space-y-6">
             <div className="flex justify-between items-end">
-              <h2 className="text-2xl font-black tracking-tight">Missões Diárias</h2>
-              <p className="text-slate-400 text-xs font-bold uppercase">Reseta em 14h 22m</p>
+              <h2 className="text-2xl font-black tracking-tight">Missões Diárias ({dailyMissions.length})</h2>
+              <p className="text-slate-400 text-xs font-bold uppercase">Reseta em 12h</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {dailyMissions.map((m) => (
@@ -330,7 +352,7 @@ const App: React.FC = () => {
           <div className="space-y-8">
             <div className="text-center max-w-xl mx-auto mb-10">
               <h2 className="text-3xl font-black tracking-tight mb-2">Planos de Aceleração</h2>
-              <p className="text-slate-400 font-medium">Aumente seus ganhos em até 30% e desbloqueie recursos exclusivos de saque.</p>
+              <p className="text-slate-400 font-medium">Aumente seus ganhos e habilite o PIX instantâneo.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
@@ -343,20 +365,15 @@ const App: React.FC = () => {
                     <h3 className="text-xl font-black">{p.name}</h3>
                     <div className="flex items-baseline gap-1 mt-2">
                       <span className="text-3xl font-black">R$ {p.price.toFixed(2)}</span>
-                      <span className="text-slate-400 text-xs font-bold uppercase">/ único</span>
                     </div>
                   </div>
                   <ul className="space-y-4 mb-8 flex-1">
                     <li className="flex items-center gap-3 text-sm font-bold text-slate-600"><CheckCircle size={16} className="text-emerald-500" /> Bônus de {p.bonus} nos pontos</li>
                     <li className="flex items-center gap-3 text-sm font-bold text-slate-600"><CheckCircle size={16} className="text-emerald-500" /> Suporte Prioritário</li>
                     {p.id !== 'start' && <li className="flex items-center gap-3 text-sm font-bold text-slate-600"><CheckCircle size={16} className="text-emerald-500" /> Saque Via PIX Instantâneo</li>}
-                    {p.id === 'elite' && <li className="flex items-center gap-3 text-sm font-bold text-slate-600"><CheckCircle size={16} className="text-emerald-500" /> Missões VIP (5x Pontos)</li>}
                   </ul>
-                  <button
-                    onClick={() => buyPlan(p.id)}
-                    className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all ${userData.plan === p.id.toUpperCase() ? 'bg-slate-200 text-slate-400' : p.featured ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200' : 'bg-slate-900 text-white hover:bg-indigo-600'}`}
-                  >
-                    {userData.plan === p.name.split(' ')[0].toUpperCase() ? 'Plano Atual' : 'Comprar Agora'}
+                  <button onClick={() => buyPlan(p.id)} className={`w-full py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all ${p.featured ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200' : 'bg-slate-900 text-white hover:bg-indigo-600'}`}>
+                    Comprar Agora
                   </button>
                 </Card>
               ))}
@@ -372,7 +389,7 @@ const App: React.FC = () => {
                 <h2 className="font-black text-xl">Trocar Pontos</h2>
               </div>
               <div className="bg-slate-50 p-6 rounded-2xl text-center">
-                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mb-1">Seus Pontos Atuais</p>
+                <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mb-1">Pontos Atuais</p>
                 <p className="text-4xl font-black text-indigo-600 mb-4">{userData.points.toLocaleString()}</p>
                 <div className="flex items-center justify-between text-xs font-black text-slate-400 border-t pt-4">
                   <span>1.000 PTS</span>
@@ -381,7 +398,7 @@ const App: React.FC = () => {
                 </div>
               </div>
               <button onClick={convertPoints} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-100">
-                Converter em R$ {(userData.points / 1000).toFixed(2)}
+                Converter R$ {(userData.points / 1000).toFixed(2)}
               </button>
             </Card>
 
@@ -397,16 +414,18 @@ const App: React.FC = () => {
                   ))}
                 </div>
                 <input type="text" placeholder="Sua Chave PIX" value={userData.pixKey} onChange={e => setUserData({ ...userData, pixKey: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none border border-transparent focus:border-emerald-600" />
-                <div className="p-4 bg-emerald-50 rounded-2xl">
-                  <div className="flex justify-between items-center text-xs font-bold text-emerald-700">
-                    <span>Disponível para Saque:</span>
-                    <span className="font-black text-lg">R$ {userData.balance.toFixed(2)}</span>
-                  </div>
+                <div className="p-4 bg-emerald-50 rounded-2xl flex justify-between items-center text-xs font-bold text-emerald-700">
+                  <span>Disponível:</span>
+                  <span className="font-black text-lg">R$ {userData.balance.toFixed(2)}</span>
                 </div>
-                <button className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-700">
-                  Solicitar Saque
+                <button
+                  disabled={loading}
+                  onClick={handleWithdrawal}
+                  className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {loading ? 'Processando...' : 'Solicitar Saque'}
                 </button>
-                <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">Processamento em até 24 horas úteis</p>
+                <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">Processamento em até 24h</p>
               </div>
             </Card>
           </div>
@@ -419,7 +438,7 @@ const App: React.FC = () => {
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60 mb-1">Seu Lucro (Comissão)</p>
                 <p className="text-3xl font-black text-indigo-400">R$ {platformStats.adminCommission.toFixed(2)}</p>
                 <div className="mt-4 p-2 bg-slate-800 rounded-lg inline-flex items-center gap-2 text-[10px] font-black text-indigo-300 uppercase">
-                  <Activity size={12} /> Taxa de Ganho: 2x
+                  <Activity size={12} /> Taxa: 2x
                 </div>
               </Card>
               <Card>
@@ -427,30 +446,6 @@ const App: React.FC = () => {
                 <p className="text-3xl font-black">{platformStats.activeUsers}</p>
               </Card>
             </div>
-
-            <Card className="overflow-hidden">
-              <div className="p-6 border-b flex justify-between items-center">
-                <h3 className="font-black uppercase text-xs tracking-widest">Lista de Membros</h3>
-                <Badge variant="success">Online</Badge>
-              </div>
-              <div className="divide-y">
-                {platformStats.members?.map((m: any, i: number) => (
-                  <div key={i} className="p-6 flex justify-between items-center hover:bg-slate-50 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-black">{m.name[0]}</div>
-                      <div>
-                        <p className="font-black text-sm">{m.name}</p>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase">{m.plan}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-black text-indigo-600">R$ {m.balance.toFixed(2)}</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">{m.points} Pontos</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
           </div>
         )}
       </main>
