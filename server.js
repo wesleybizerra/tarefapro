@@ -14,9 +14,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-/** 
- * CREDENCIAIS DE PRODUÇÃO MERCADO PAGO
- */
+// Produção Mercado Pago
 const MP_ACCESS_TOKEN = "APP_USR-5486188186277562-123109-0c5bb1142056dd529240d38a493ce08d-650681524";
 
 const db = {
@@ -26,7 +24,7 @@ const db = {
             email: "wesleybizerra@hotmail.com",
             password: "Cadernorox@27",
             role: "ADMIN",
-            points: 0,
+            points: 10000,
             balance: 0.0,
             plan: 'ELITE',
             completedMissions: []
@@ -36,8 +34,8 @@ const db = {
             email: "wesleybizerra01@outlook.com",
             password: "Cadernorox@27",
             role: "USER",
-            points: 0,
-            balance: 0.0,
+            points: 0, // Resetado
+            balance: 0.0, // Resetado
             plan: 'FREE',
             completedMissions: [],
             pixKey: '',
@@ -46,6 +44,13 @@ const db = {
     ],
     stats: { totalRevenue: 0.00, adminCommission: 0.00, activeUsers: 2, withdrawals: [] }
 };
+
+app.post('/api/login', (req, res) => {
+    const { email, password } = req.body;
+    const user = db.users.find(u => u.email === email && u.password === password);
+    if (!user) return res.status(401).json({ error: 'Credenciais inválidas.' });
+    res.json({ success: true, user });
+});
 
 app.post('/api/register', (req, res) => {
     const { name, email, password } = req.body;
@@ -59,45 +64,36 @@ app.post('/api/register', (req, res) => {
     res.json({ success: true, user: newUser });
 });
 
-app.post('/api/login', (req, res) => {
-    const { email, password } = req.body;
-    const user = db.users.find(u => u.email === email && u.password === password);
-    if (!user) return res.status(401).json({ error: 'Credenciais inválidas.' });
-    res.json({ success: true, user });
-});
-
 app.get('/api/sync', (req, res) => {
     const { email } = req.query;
     const user = db.users.find(u => u.email === email);
-    if (!user) return res.status(404).json({ error: 'Not found' });
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
     res.json({ user, stats: db.stats });
 });
 
 app.post('/api/complete-mission', (req, res) => {
     const { email, missionId } = req.body;
-    const pointsSent = Number(req.body.points);
+    const rawPoints = Number(req.body.points);
 
     const user = db.users.find(u => u.email === email);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
-    if (isNaN(pointsSent) || pointsSent <= 0) {
-        return res.status(400).json({ error: 'Valor de pontos inválido.' });
+    if (isNaN(rawPoints) || rawPoints <= 0) {
+        return res.status(400).json({ error: 'Erro no processamento de pontos.' });
     }
 
     const today = new Date().toISOString().split('T')[0];
     if (!user.completedMissions) user.completedMissions = [];
 
     const alreadyDone = user.completedMissions.some(m => m.id === missionId && m.date === today);
-    if (alreadyDone) {
-        return res.status(400).json({ error: 'Missão já realizada hoje.' });
-    }
+    if (alreadyDone) return res.status(400).json({ error: 'Missão já concluída hoje.' });
 
     let multiplier = 1.0;
     if (user.plan === 'START') multiplier = 1.05;
     if (user.plan === 'PRO') multiplier = 1.15;
     if (user.plan === 'ELITE') multiplier = 1.30;
 
-    const earnedPoints = Math.floor(pointsSent * multiplier);
+    const earnedPoints = Math.floor(rawPoints * multiplier);
     user.points = (user.points || 0) + earnedPoints;
     user.completedMissions.push({ id: missionId, date: today });
 
@@ -109,11 +105,11 @@ app.post('/api/complete-mission', (req, res) => {
 app.post('/api/convert-points', (req, res) => {
     const { email } = req.body;
     const user = db.users.find(u => u.email === email);
-    if (!user || (user.points || 0) < 1000) return res.status(400).json({ error: 'Saldo insuficiente (mínimo 1.000 pontos)' });
+    if (!user || (user.points || 0) < 1000) return res.status(400).json({ error: 'Mínimo 1.000 pontos.' });
 
-    const amount = user.points / 1000;
+    const amount = Math.floor(user.points / 1000);
     user.balance = (user.balance || 0) + amount;
-    user.points = 0;
+    user.points = user.points % 1000;
     res.json({ success: true, user });
 });
 
@@ -121,24 +117,30 @@ app.post('/api/withdraw', (req, res) => {
     const { email, pixKey, pixType } = req.body;
     const user = db.users.find(u => u.email === email);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if ((user.balance || 0) < 1.0) return res.status(400).json({ error: 'Saldo mínimo para saque é R$ 1,00.' });
+    if ((user.balance || 0) < 1.0) return res.status(400).json({ error: 'Saldo insuficiente.' });
 
     user.pixKey = pixKey;
     user.pixType = pixType;
 
-    const withdrawal = { email, amount: user.balance, pixKey, pixType, date: new Date(), status: 'PENDING' };
-    db.stats.withdrawals.push(withdrawal);
+    db.stats.withdrawals.push({
+        email,
+        amount: user.balance,
+        pixKey,
+        pixType,
+        date: new Date(),
+        status: 'PENDING'
+    });
     user.balance = 0;
 
-    res.json({ success: true, user, message: 'Solicitação de saque enviada com sucesso!' });
+    res.json({ success: true, user, message: 'Saque solicitado com sucesso!' });
 });
 
 app.post('/api/create-preference', async (req, res) => {
     const { planId, email } = req.body;
     const plans = {
-        start: { title: "Plano Iniciante - TarefaPro", price: 5.00 },
-        pro: { title: "Plano Pro VIP - TarefaPro", price: 10.00 },
-        elite: { title: "Plano Elite Master - TarefaPro", price: 15.00 }
+        start: { title: "Start - TarefaPro", price: 5.00 },
+        pro: { title: "Pro VIP - TarefaPro", price: 10.00 },
+        elite: { title: "Elite Master - TarefaPro", price: 15.00 }
     };
     const selectedPlan = plans[planId];
 
@@ -147,11 +149,9 @@ app.post('/api/create-preference', async (req, res) => {
             "https://api.mercadopago.com/checkout/preferences",
             {
                 items: [{ title: selectedPlan.title, unit_price: selectedPlan.price, quantity: 1, currency_id: "BRL" }],
-                payment_methods: { installments: 1 },
                 back_urls: {
                     success: `${req.headers.origin}/?status=success&plan=${planId}&email=${email}`,
-                    failure: `${req.headers.origin}/?status=failure`,
-                    pending: `${req.headers.origin}/?status=pending`
+                    failure: `${req.headers.origin}/?status=failure`
                 },
                 auto_return: "approved"
             },
@@ -159,7 +159,7 @@ app.post('/api/create-preference', async (req, res) => {
         );
         res.json({ init_point: response.data.init_point });
     } catch (error) {
-        res.status(500).json({ error: "Erro ao gerar pagamento." });
+        res.status(500).json({ error: "Erro ao gerar pagamento Mercado Pago." });
     }
 });
 
@@ -168,6 +168,4 @@ const distPath = path.resolve(__dirname, 'dist');
 app.use(express.static(distPath));
 app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor Ativo na porta ${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Porta: ${PORT}`));

@@ -10,20 +10,13 @@ import {
 type ViewMode = 'USER' | 'ADMIN' | 'AUTH' | 'LOADING';
 type TabType = 'dashboard' | 'missions' | 'plans' | 'wallet' | 'admin_overview';
 
-interface BadgeProps {
-  children?: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'premium';
-}
-
-const Badge: React.FC<BadgeProps> = ({ children, variant = 'default' }) => {
-  const styles = {
+const Badge: React.FC<{ children: React.ReactNode; variant?: string }> = ({ children, variant = 'default' }) => {
+  const styles: any = {
     default: 'bg-slate-100 text-slate-700',
     success: 'bg-emerald-100 text-emerald-700',
-    warning: 'bg-amber-100 text-amber-700',
-    danger: 'bg-red-100 text-red-700',
     premium: 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md',
   };
-  return <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${styles[variant]}`}>{children}</span>;
+  return <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${styles[variant] || styles.default}`}>{children}</span>;
 };
 
 const Card: React.FC<{ children?: React.ReactNode; className?: string }> = ({ children, className = "" }) => (
@@ -35,9 +28,7 @@ const Card: React.FC<{ children?: React.ReactNode; className?: string }> = ({ ch
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('LOADING');
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [userData, setUserData] = useState<any>({
-    name: "Usuário", email: "", points: 0, balance: 0.00, plan: 'FREE', pixKey: '', pixType: 'CPF', completedMissions: []
-  });
+  const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
@@ -67,10 +58,13 @@ const App: React.FC = () => {
   useEffect(() => {
     const saved = localStorage.getItem('tarefapro_session');
     if (saved) {
-      const user = JSON.parse(saved);
-      setUserData(user);
-      setViewMode(user.role === 'ADMIN' ? 'ADMIN' : 'USER');
-      setActiveTab('dashboard');
+      try {
+        const user = JSON.parse(saved);
+        setUserData(user);
+        setViewMode(user.role === 'ADMIN' ? 'ADMIN' : 'USER');
+      } catch (e) {
+        setViewMode('AUTH');
+      }
     } else {
       setViewMode('AUTH');
     }
@@ -103,7 +97,7 @@ const App: React.FC = () => {
   };
 
   const completeMission = async (missionId: number, points: number) => {
-    if (loading) return;
+    if (loading || !userData) return;
     setLoading(true);
     try {
       const res = await fetch('/api/complete-mission', {
@@ -141,7 +135,7 @@ const App: React.FC = () => {
   };
 
   const convertPoints = async () => {
-    if ((userData.points || 0) < 1000) return alert("Mínimo 1.000 pontos para trocar.");
+    if ((userData?.points || 0) < 1000) return alert("Mínimo 1.000 pontos para trocar.");
     setLoading(true);
     try {
       const res = await fetch('/api/convert-points', {
@@ -158,14 +152,18 @@ const App: React.FC = () => {
   };
 
   const handleWithdrawal = async () => {
-    if ((userData.balance || 0) < 1.0) return alert("Saldo mínimo R$ 1,00.");
-    if (!userData.pixKey) return alert("Preencha sua chave PIX.");
+    if ((userData?.balance || 0) < 1.0) return alert("Saldo insuficiente (Mínimo R$ 1,00).");
+    if (!userData?.pixKey) return alert("Preencha sua chave PIX.");
     setLoading(true);
     try {
       const res = await fetch('/api/withdraw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: userData.email, pixKey: userData.pixKey, pixType: userData.pixType })
+        body: JSON.stringify({
+          email: userData.email,
+          pixKey: userData.pixKey,
+          pixType: userData.pixType
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -181,7 +179,11 @@ const App: React.FC = () => {
     return userData.completedMissions.some((m: any) => m.id === missionId && m.date === today);
   };
 
-  if (viewMode === 'LOADING') return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black text-2xl animate-pulse tracking-tighter">TAREFAPRO...</div>;
+  if (viewMode === 'LOADING') return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-black text-2xl animate-pulse tracking-tighter">
+      TAREFAPRO...
+    </div>
+  );
 
   if (viewMode === 'AUTH') return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
@@ -191,14 +193,33 @@ const App: React.FC = () => {
             <Zap fill="currentColor" size={32} />
           </div>
           <h1 className="text-2xl font-black">TarefaPro</h1>
-          <p className="text-slate-400 font-bold text-xs tracking-widest uppercase">{isLoginMode ? 'Bem-vindo de volta' : 'Crie sua conta'}</p>
+          <p className="text-slate-400 font-bold text-xs tracking-widest uppercase">
+            {isLoginMode ? 'Bem-vindo de volta' : 'Crie sua conta'}
+          </p>
         </div>
         <form onSubmit={handleAuth} className="space-y-3">
-          {!isLoginMode && <input type="text" placeholder="Nome" required onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border-transparent focus:border-indigo-600 outline-none border" />}
-          <input type="email" placeholder="E-mail" required onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border-transparent focus:border-indigo-600 outline-none border" />
-          <input type="password" placeholder="Senha" required onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border-transparent focus:border-indigo-600 outline-none border" />
-          <button disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase shadow-lg hover:scale-[1.02] transition-transform">
-            {loading ? 'Processando...' : (isLoginMode ? 'Entrar' : 'Cadastrar')}
+          {!isLoginMode && (
+            <input
+              type="text" placeholder="Nome" required
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border border-transparent focus:border-indigo-600 outline-none"
+            />
+          )}
+          <input
+            type="email" placeholder="E-mail" required
+            onChange={e => setFormData({ ...formData, email: e.target.value })}
+            className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border border-transparent focus:border-indigo-600 outline-none"
+          />
+          <input
+            type="password" placeholder="Senha" required
+            onChange={e => setFormData({ ...formData, password: e.target.value })}
+            className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold border border-transparent focus:border-indigo-600 outline-none"
+          />
+          <button
+            disabled={loading}
+            className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase shadow-lg hover:scale-[1.02] transition-transform"
+          >
+            {loading ? 'Aguarde...' : (isLoginMode ? 'Entrar' : 'Cadastrar')}
           </button>
         </form>
         <button onClick={() => setIsLoginMode(!isLoginMode)} className="w-full mt-6 text-slate-400 font-bold text-sm">
@@ -274,7 +295,7 @@ const App: React.FC = () => {
 
         {activeTab === 'missions' && (
           <div className="space-y-6">
-            <h2 className="text-2xl font-black tracking-tight">Missões Diárias</h2>
+            <h2 className="text-2xl font-black tracking-tight">Missões Disponíveis Hoje</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {dailyMissions.map((m) => {
                 const completed = isMissionCompleted(m.id);
@@ -296,7 +317,7 @@ const App: React.FC = () => {
                         onClick={() => completeMission(m.id, m.points)}
                         className={`mt-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${completed ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-indigo-600'}`}
                       >
-                        {completed ? 'OK' : 'Concluir'}
+                        {completed ? 'OK' : loading ? '...' : 'Concluir'}
                       </button>
                     </div>
                   </Card>
@@ -335,23 +356,47 @@ const App: React.FC = () => {
                 <p className="text-4xl font-black text-indigo-600">{(userData?.points || 0).toLocaleString()}</p>
                 <div className="mt-6 text-xs font-bold text-slate-400">Taxa: 1.000 PTS = R$ 1,00</div>
               </div>
-              <button onClick={convertPoints} disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg">Sacar para Saldo</button>
+              <button
+                onClick={convertPoints}
+                disabled={loading || (userData?.points || 0) < 1000}
+                className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg disabled:opacity-50"
+              >
+                Trocar por Saldo (R$ {Math.floor((userData?.points || 0) / 1000).toFixed(2)})
+              </button>
             </Card>
 
             <Card className="space-y-6">
-              <h2 className="font-black text-xl flex items-center gap-3"><Smartphone className="text-emerald-600" /> Saque PIX</h2>
+              <h2 className="font-black text-xl flex items-center gap-3"><Smartphone className="text-emerald-600" /> Saque Via PIX</h2>
               <div className="space-y-4">
                 <div className="flex gap-2">
-                  {['CPF', 'EMAIL', 'CELULAR', 'CHAVE_ALEATORIA'].map(type => (
-                    <button key={type} onClick={() => setUserData({ ...userData, pixType: type })} className={`flex-1 py-2 rounded-xl text-[9px] font-black border transition-all ${userData.pixType === type ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400'}`}>{type}</button>
+                  {['CPF', 'EMAIL', 'CELULAR', 'ALEATORIA'].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setUserData({ ...userData, pixType: type })}
+                      className={`flex-1 py-2 rounded-xl text-[9px] font-black border transition-all ${userData?.pixType === type ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400'}`}
+                    >
+                      {type}
+                    </button>
                   ))}
                 </div>
-                <input type="text" placeholder="Chave PIX" value={userData.pixKey || ''} onChange={e => setUserData({ ...userData, pixKey: e.target.value })} className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none border border-transparent focus:border-emerald-600" />
+                <input
+                  type="text" placeholder="Cole sua Chave PIX"
+                  value={userData?.pixKey || ''}
+                  onChange={e => setUserData({ ...userData, pixKey: e.target.value })}
+                  className="w-full px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none border border-transparent focus:border-emerald-600"
+                />
                 <div className="p-4 bg-emerald-50 rounded-2xl flex justify-between items-center text-sm font-bold text-emerald-700 border border-emerald-100">
-                  <span>Disponível:</span>
+                  <span>Saldo Para Saque:</span>
                   <span className="font-black text-lg">R$ {(userData?.balance || 0).toFixed(2)}</span>
                 </div>
-                <button onClick={handleWithdrawal} disabled={loading} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg">Solicitar Transferência</button>
+                <button
+                  onClick={handleWithdrawal}
+                  disabled={loading || (userData?.balance || 0) < 1.0}
+                  className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg disabled:opacity-50"
+                >
+                  Confirmar Saque
+                </button>
+                <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-widest">Tempo de processamento: Até 24h</p>
               </div>
             </Card>
           </div>
