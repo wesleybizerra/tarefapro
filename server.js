@@ -14,12 +14,35 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-const MP_ACCESS_TOKEN = "APP_USR-5771559898662344-123109-873861a0a8c65207496af0b1d59c3733-3102973971";
+/** 
+ * CREDENCIAIS DE PRODUÇÃO MERCADO PAGO
+ * Fornecidas pelo usuário: wesleybizerra01
+ */
+const MP_ACCESS_TOKEN = "APP_USR-5486188186277562-123109-0c5bb1142056dd529240d38a493ce08d-650681524";
+const MP_PUBLIC_KEY = "APP_USR-54514598-de68-42a2-baa9-00129449da87";
 
 const db = {
     users: [
-        { name: "Admin Wesley", email: "wesleybizerra@hotmail.com", password: "Cadernorox@27", role: "ADMIN", points: 10000, balance: 0.0, plan: 'ELITE' },
-        { name: "Wesley Premium", email: "wesleybizerra01@outlook.com", password: "Cadernorox@27", role: "USER", points: 5000, balance: 15.0, plan: 'ELITE' }
+        {
+            name: "Admin Wesley",
+            email: "wesleybizerra@hotmail.com",
+            password: "Cadernorox@27",
+            role: "ADMIN",
+            points: 10000,
+            balance: 0.0,
+            plan: 'ELITE',
+            completedMissions: []
+        },
+        {
+            name: "Wesley Premium",
+            email: "wesleybizerra01@outlook.com",
+            password: "Cadernorox@27",
+            role: "USER",
+            points: 0, // CONTA ZERADA CONFORME SOLICITADO
+            balance: 0.0,
+            plan: 'FREE',
+            completedMissions: []
+        }
     ],
     stats: { totalRevenue: 0.00, adminCommission: 0.00, activeUsers: 2, withdrawals: [] }
 };
@@ -27,7 +50,10 @@ const db = {
 app.post('/api/register', (req, res) => {
     const { name, email, password } = req.body;
     if (db.users.find(u => u.email === email)) return res.status(400).json({ error: 'E-mail já cadastrado.' });
-    const newUser = { name, email, password, role: 'USER', points: 0, balance: 0.00, plan: 'FREE' };
+    const newUser = {
+        name, email, password, role: 'USER', points: 0, balance: 0.00, plan: 'FREE',
+        completedMissions: []
+    };
     db.users.push(newUser);
     db.stats.activeUsers++;
     res.json({ success: true, user: newUser });
@@ -60,25 +86,36 @@ app.post('/api/confirm-payment', (req, res) => {
     }
 });
 
-// Missão Concluída (Lógica 20-250 pontos + Comissão 2x Admin)
+// Lógica de Missão: PONTOS FIXOS E TRAVA 1X POR DIA
 app.post('/api/complete-mission', (req, res) => {
-    const { email, missionId } = req.body;
+    const { email, missionId, points } = req.body;
     const user = db.users.find(u => u.email === email);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
-    // Sorteia entre 20 e 250 pontos conforme solicitado
-    const basePoints = Math.floor(Math.random() * (250 - 20 + 1) + 20);
+    // Pega data atual no formato YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
 
+    // Verifica se a missão já consta como concluída para HOJE
+    const alreadyDone = user.completedMissions.some(m => m.id === missionId && m.date === today);
+    if (alreadyDone) {
+        return res.status(400).json({ error: 'Você já completou esta missão hoje. Tente amanhã!' });
+    }
+
+    // Multiplicador baseado no plano VIP
     let multiplier = 1.0;
     if (user.plan === 'START') multiplier = 1.05;
     if (user.plan === 'PRO') multiplier = 1.15;
     if (user.plan === 'ELITE') multiplier = 1.30;
 
-    const earnedPoints = Math.floor(basePoints * multiplier);
+    // Usa EXATAMENTE o valor de pontos enviado (que vem da definição da missão no frontend)
+    const earnedPoints = Math.floor(points * multiplier);
     user.points += earnedPoints;
 
-    // Comissão Admin (Ganho real do dono)
-    const adminCommission = (earnedPoints / 1000) * 2;
+    // Salva no histórico para impedir repetição no mesmo dia
+    user.completedMissions.push({ id: missionId, date: today });
+
+    // Comissão administrativa (Simulação)
+    const adminCommission = (earnedPoints / 1000) * 1.5;
     db.stats.adminCommission += adminCommission;
 
     res.json({ success: true, user, earnedPoints });
@@ -87,20 +124,18 @@ app.post('/api/complete-mission', (req, res) => {
 app.post('/api/convert-points', (req, res) => {
     const { email } = req.body;
     const user = db.users.find(u => u.email === email);
-    if (!user || user.points < 1000) return res.status(400).json({ error: 'Saldo insuficiente' });
+    if (!user || user.points < 1000) return res.status(400).json({ error: 'Saldo insuficiente para conversão' });
     const amount = user.points / 1000;
     user.balance += amount;
     user.points = 0;
     res.json({ success: true, user });
 });
 
-// Endpoint de Saque PIX
 app.post('/api/withdraw', (req, res) => {
     const { email, pixKey, pixType } = req.body;
     const user = db.users.find(u => u.email === email);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if (user.balance < 1.0) return res.status(400).json({ error: 'Saldo mínimo para saque é R$ 1,00' });
-    if (!pixKey) return res.status(400).json({ error: 'Chave PIX obrigatória' });
+    if (user.balance < 1.0) return res.status(400).json({ error: 'Saldo insuficiente para saque.' });
 
     const withdrawal = {
         email,
@@ -112,17 +147,17 @@ app.post('/api/withdraw', (req, res) => {
     };
 
     db.stats.withdrawals.push(withdrawal);
-    user.balance = 0; // Zera o saldo após solicitar
+    user.balance = 0;
 
-    res.json({ success: true, user, message: 'Saque solicitado com sucesso!' });
+    res.json({ success: true, user, message: 'Solicitação de saque enviada!' });
 });
 
 app.post('/api/create-preference', async (req, res) => {
     const { planId, email } = req.body;
     const plans = {
-        start: { title: "Plano Iniciante TarefaPro", price: 5.00 },
-        pro: { title: "Plano Pro VIP TarefaPro", price: 10.00 },
-        elite: { title: "Plano Elite Master TarefaPro", price: 15.00 }
+        start: { title: "Plano Iniciante - TarefaPro", price: 5.00 },
+        pro: { title: "Plano Pro VIP - TarefaPro", price: 10.00 },
+        elite: { title: "Plano Elite Master - TarefaPro", price: 15.00 }
     };
     const selectedPlan = plans[planId];
 
@@ -130,10 +165,16 @@ app.post('/api/create-preference', async (req, res) => {
         const response = await axios.post(
             "https://api.mercadopago.com/checkout/preferences",
             {
-                items: [{ title: selectedPlan.title, unit_price: selectedPlan.price, quantity: 1, currency_id: "BRL" }],
+                items: [{
+                    title: selectedPlan.title,
+                    unit_price: selectedPlan.price,
+                    quantity: 1,
+                    currency_id: "BRL"
+                }],
                 payment_methods: {
-                    excluded_payment_methods: [{ id: "amex" }], // Exemplo de exclusão, mantém PIX e outros ativos
-                    installments: 1
+                    installments: 1,
+                    // Garante que PIX esteja disponível (configurável também no painel MP)
+                    excluded_payment_types: []
                 },
                 back_urls: {
                     success: `${req.headers.origin}/?status=success&plan=${planId}&email=${email}`,
@@ -146,7 +187,8 @@ app.post('/api/create-preference', async (req, res) => {
         );
         res.json({ init_point: response.data.init_point });
     } catch (error) {
-        res.status(500).json({ error: "Erro ao criar preferência" });
+        console.error("MP API Error:", error.response?.data || error.message);
+        res.status(500).json({ error: "Erro ao conectar com o Mercado Pago de produção." });
     }
 });
 
@@ -156,5 +198,5 @@ app.use(express.static(distPath));
 app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`🚀 Produção TarefaPro ativa na porta ${PORT}`);
 });
